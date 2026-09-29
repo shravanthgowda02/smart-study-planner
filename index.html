@@ -1,0 +1,1287 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8fc">
+  <meta name="description" content="A thoughtful, private workspace for planning study goals and discovering exam patterns.">
+  <title>Studyspace — your study, in focus</title>
+  <script>
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = { darkMode: "class" };
+    try {
+      if (localStorage.getItem("studyspace-theme") === "dark") {
+        document.documentElement.dataset.theme = "dark";
+        document.documentElement.classList.add("dark");
+      }
+    } catch (error) {
+      console.warn("Could not load the saved appearance preference:", error);
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{color-scheme:light;--bg:#f6f8fc;--surface:#fff;--surface-2:#fbfcfe;--surface-muted:#f3f5f9;--ink:#202334;--text-2:#6d7184;--text-3:#999cad;--line:#e9ebf2;--line-soft:#f0f1f5;--accent:#526fe5;--accent-dark:#405cd0;--accent-soft:#edf0ff;--green:#23845e;--green-soft:#eaf7f0;--red:#d35056;--red-soft:#fff0ef;--amber:#a67819;--amber-soft:#fff6df;--shadow:0 1px 2px #252b4410,0 8px 24px #252b4407;--shadow-hover:0 12px 30px #252b4415,0 2px 8px #252b4409;--sans:"DM Sans",sans-serif;--display:"Manrope",sans-serif;--mono:"DM Mono",monospace}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:88px}
+    body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;transition:background-color .24s ease,color .24s ease}
+    button,input,select,textarea{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #7189f088;outline-offset:2px}
+    .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+    .shell{min-height:100vh}
+    .sidebar{position:fixed;z-index:5;inset:0 auto 0 0;width:248px;padding:23px 15px 17px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;transition:background-color .24s,border-color .24s,transform .24s}
+    .brand{display:flex;align-items:center;gap:10px;padding:2px 9px 26px;color:var(--ink);text-decoration:none;font:800 16px var(--display);letter-spacing:-.7px}
+    .brand-icon{display:grid;place-items:center;width:29px;height:29px;border-radius:9px;background:var(--accent);color:white;font:800 17px var(--display);box-shadow:0 5px 12px #526fe535}
+    .brand-period{color:var(--accent)}
+    .side-label,.eyebrow{font-size:9px;line-height:1.2;letter-spacing:1.35px;font-weight:700;color:var(--text-3)}
+    .side-label{padding:0 10px;margin:12px 0 10px}
+    .side-nav{display:grid;gap:4px}
+    .nav-link{position:relative;display:flex;align-items:center;gap:11px;padding:0 10px;height:39px;border-radius:8px;text-decoration:none;color:var(--text-2);font-size:11px;font-weight:600;transition:color .16s,background-color .16s,transform .16s}
+    .nav-link:hover{background:var(--surface-muted);color:var(--ink);transform:translateX(2px)}
+    .nav-link.active{background:var(--accent-soft);color:var(--accent);font-weight:700}
+    .nav-glyph{display:grid;place-items:center;width:19px;font-size:15px}
+    .side-bottom{margin-top:auto}
+    .privacy-card{padding:13px 13px 14px;background:var(--surface-muted);border:1px solid var(--line);border-radius:10px}
+    .privacy-card strong{display:block;font-size:10px;margin:0 0 5px}
+    .privacy-card span{display:block;color:var(--text-2);font-size:9px;line-height:1.55}
+    .local-status{display:flex;align-items:center;gap:7px;margin:14px 9px 0;color:var(--text-3);font-size:9px}
+    .local-dot{width:7px;height:7px;border-radius:50%;background:#39ad78;box-shadow:0 0 0 3px #39ad781c}
+    .main{min-height:100vh;margin-left:248px}
+    .topbar{position:sticky;z-index:4;top:0;height:62px;padding:0 clamp(22px,4.5vw,66px);display:flex;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--surface) 92%,transparent);border-bottom:1px solid var(--line);backdrop-filter:blur(14px);transition:background-color .24s,border-color .24s}
+    .crumb{font-size:10px;color:var(--text-3)}.crumb b{padding:0 8px;font-weight:400;color:var(--line)}.crumb strong{color:var(--text-2);font-weight:600}
+    .top-actions{display:flex;align-items:center;gap:8px}
+    .icon-btn{width:32px;height:32px;padding:0;display:grid;place-items:center;color:var(--text-2);background:var(--surface);border:1px solid var(--line);border-radius:8px;transition:transform .16s,background-color .2s,color .2s,border-color .2s}
+    .icon-btn:hover{transform:translateY(-1px);background:var(--surface-muted);color:var(--accent);border-color:#cfd7fa}
+    .theme-icon{width:15px;height:15px}.moon{display:none}
+    .page{max-width:1160px;margin:0 auto;padding:36px clamp(22px,4.5vw,66px) 28px}
+    .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+    .eyebrow{margin:0 0 9px}
+    h1,h2,h3,p{margin-top:0}
+    h1{margin-bottom:6px;font:800 clamp(25px,3vw,31px)/1.15 var(--display);letter-spacing:-1.35px}
+    h1 span{color:var(--accent)}
+    .subtitle{margin:0;color:var(--text-2);font-size:11px;line-height:1.6}
+    h2{margin:0;font:750 14px/1.3 var(--display);letter-spacing:-.25px}
+    .primary-btn,.quiet-btn{min-height:34px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 12px;border-radius:8px;font-size:10px;font-weight:700;transition:transform .16s,background-color .16s,border-color .16s,color .16s,box-shadow .16s}
+    .primary-btn{color:#fff;border:1px solid var(--accent);background:var(--accent);box-shadow:0 3px 8px #526fe522}
+    .primary-btn:hover{transform:translateY(-1px);background:var(--accent-dark);box-shadow:0 6px 15px #526fe53b}
+    .quiet-btn{color:var(--text-2);border:1px solid var(--line);background:var(--surface)}
+    .quiet-btn:hover{transform:translateY(-1px);color:var(--accent);border-color:#d3dafa;background:var(--accent-soft)}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:15px}
+    .card,.summary-card{background:var(--surface);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);transition:transform .19s,box-shadow .19s,background-color .22s,border-color .22s}
+    .summary-card{min-height:119px;padding:15px 16px}
+    .summary-card:hover,.card:hover{box-shadow:var(--shadow-hover)}
+    .summary-top{display:flex;justify-content:space-between;align-items:center}
+    .summary-label{font-size:8px;font-weight:700;letter-spacing:.85px;color:var(--text-3)}
+    .summary-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:12px}
+    .summary-icon.amber{background:var(--amber-soft);color:var(--amber)}.summary-icon.green{background:var(--green-soft);color:var(--green)}
+    .summary-value{margin:10px 0 2px;font:800 25px/1 var(--display);letter-spacing:-1px}
+    .summary-caption{margin:6px 0 0;color:var(--text-3);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .session-log-link{display:inline-block;margin-top:5px;padding:0;font-size:8px}
+    .progress-track{height:5px;margin-top:10px;overflow:hidden;border-radius:99px;background:var(--surface-muted)}
+    .progress-fill{height:100%;width:0;border-radius:inherit;background:var(--accent);transition:width .35s ease}
+    .task-panel{padding:17px 18px 8px}
+    .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .panel-head-left .eyebrow{margin-bottom:5px}
+    .count-pill,.soft-badge{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:99px;background:var(--surface-muted);color:var(--text-2);font-size:8px;font-weight:700;white-space:nowrap}
+    .section-divider{height:1px;margin:14px -18px 0;background:var(--line-soft)}
+    .task-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0}
+    .filter-group{display:flex;align-items:center;gap:3px;padding:3px;background:var(--surface-muted);border-radius:7px}
+    .filter-btn{padding:5px 8px;border:0;border-radius:5px;background:transparent;color:var(--text-2);font-size:9px;font-weight:600;transition:background-color .15s,color .15s,box-shadow .15s}
+    .filter-btn:hover{color:var(--ink)}.filter-btn.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px #20233412}
+    .search-box{width:min(200px,42%);height:29px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);font-size:9px}
+    .search-box::placeholder{color:var(--text-3)}
+    .task-list{display:grid}
+    .task-row{display:grid;grid-template-columns:17px minmax(0,1fr) auto;align-items:center;gap:11px;padding:12px 1px;border-top:1px solid var(--line-soft);transition:background-color .16s}
+    .task-row:hover{background:color-mix(in srgb,var(--surface-muted) 55%,transparent)}
+    .task-checkbox{appearance:none;display:grid;place-items:center;width:16px;height:16px;margin:0;border:1.4px solid #cbd0dc;border-radius:5px;background:var(--surface);cursor:pointer;transition:background .15s,border-color .15s}
+    .task-checkbox:checked{border-color:var(--accent);background:var(--accent)}
+    .task-checkbox:checked:after{content:"✓";color:white;font-size:10px;font-weight:700}
+    .task-copy{min-width:0}
+    .task-title{margin:0 0 4px;font-size:10px;font-weight:700;overflow-wrap:anywhere}
+    .task-description{margin:0 0 5px;color:var(--text-2);font-size:9px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+    .task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--text-3);font-size:8px}
+    .task-done .task-title{text-decoration:line-through;color:var(--text-3)}
+    .priority-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:99px;font-size:8px;font-weight:700;text-transform:capitalize;white-space:nowrap}
+    .priority-badge:before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+    .priority-high{background:var(--red-soft);color:var(--red)}
+    .priority-medium{background:var(--amber-soft);color:var(--amber)}
+    .priority-low{background:var(--green-soft);color:var(--green)}
+    .task-actions{display:flex;align-items:center;gap:3px}
+    .task-action{width:27px;height:27px;display:grid;place-items:center;border:0;border-radius:6px;background:transparent;color:var(--text-3);font-size:12px;transition:background .16s,color .16s,transform .16s}
+    .task-action:hover{background:var(--surface-muted);color:var(--accent);transform:translateY(-1px)}
+    .empty-state{padding:32px 12px;text-align:center;color:var(--text-3);font-size:10px}
+    .empty-state strong{display:block;margin-bottom:5px;color:var(--ink);font-size:11px}
+    .task-footer{display:flex;align-items:center;justify-content:space-between;padding:11px 1px 13px;border-top:1px solid var(--line-soft);color:var(--text-3);font-size:8px}
+    .view-link{border:0;background:none;color:var(--accent);font-size:9px;font-weight:700}
+    .view-link:hover{color:var(--accent-dark)}
+    .page-view[hidden]{display:none!important}
+    .predict-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr);gap:13px}
+    .predict-card{padding:17px}
+    .predict-card .subtitle{margin:7px 0 13px;font-size:10px}
+    .topic-form{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .field{display:grid;gap:5px}.field-wide{grid-column:1/-1}
+    .field-label{color:var(--text-2);font-size:9px;font-weight:700}
+    .field-input{width:100%;height:35px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--ink);font-size:10px;transition:border-color .15s,box-shadow .15s}
+    .field-input:focus{outline:none;border-color:#8294ea;box-shadow:0 0 0 3px #526fe51b}
+    textarea.field-input{height:auto;min-height:70px;padding:9px;resize:vertical;line-height:1.5}
+    .topic-form .primary-btn{grid-column:1/-1;justify-self:start}
+    .focus-list{display:grid;gap:0}
+    .focus-item{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:9px;align-items:center;padding:11px 0;border-top:1px solid var(--line-soft)}
+    .focus-rank{display:grid;place-items:center;width:25px;height:25px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font:500 9px var(--mono)}
+    .focus-topic{font-size:10px;font-weight:700;overflow-wrap:anywhere}.focus-meta{margin-top:3px;color:var(--text-3);font-size:8px}
+    .focus-frequency{padding:4px 7px;border-radius:99px;background:var(--surface-muted);color:var(--text-2);font:9px var(--mono);white-space:nowrap}
+    .table-wrap{overflow:auto}
+    .data-table{width:100%;min-width:520px;border-collapse:collapse;text-align:left}
+    .data-table th{padding:9px 8px;color:var(--text-3);font-size:8px;text-transform:uppercase;letter-spacing:.7px}
+    .data-table td{padding:10px 8px;border-top:1px solid var(--line-soft);font-size:9px;color:var(--text-2);vertical-align:middle}
+    .data-table td:first-child{font-weight:700;color:var(--ink)}
+    .tag-list{display:flex;gap:4px;flex-wrap:wrap}
+    .tag{padding:3px 6px;border-radius:99px;background:var(--surface-muted);color:var(--text-2);font-size:8px;white-space:nowrap}
+    .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    .settings-card{padding:18px}
+    .settings-card .eyebrow{margin-bottom:6px}
+    .settings-card h2{margin-bottom:6px}
+    .settings-card .subtitle{margin-bottom:14px;font-size:10px}
+    .settings-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .setting-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:12px 0;border-top:1px solid var(--line-soft)}
+    .setting-row strong{display:block;font-size:10px}.setting-row small{display:block;margin-top:4px;color:var(--text-3);font-size:9px}
+    .theme-switch{position:relative;width:40px;height:23px;padding:0;border:0;border-radius:99px;background:#d8dce7;transition:background .2s}
+    .theme-switch:after{content:"";position:absolute;left:3px;top:3px;width:17px;height:17px;border-radius:50%;background:white;box-shadow:0 1px 3px #0002;transition:transform .2s}
+    .theme-switch[aria-checked="true"]{background:var(--accent)}.theme-switch[aria-checked="true"]:after{transform:translateX(17px)}
+    .footer{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding:7px 1px;color:var(--text-3);font-size:8px}
+    .dialog{width:min(470px,calc(100% - 28px));max-height:min(90vh,760px);overflow:auto;padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);box-shadow:0 25px 80px #13182b33}
+    .dialog::backdrop{background:#12162480;backdrop-filter:blur(3px)}
+    .dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:17px}
+    .dialog-head .eyebrow{margin-bottom:5px}.dialog-head h2{font-size:17px}
+    .dialog-close{width:28px;height:28px;border:0;border-radius:7px;background:var(--surface-muted);color:var(--text-2);font-size:18px}
+    .dialog-fields{display:grid;gap:12px}
+    .dialog-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px;padding-top:14px;border-top:1px solid var(--line-soft)}
+    .toast{position:fixed;z-index:15;right:22px;bottom:20px;max-width:min(360px,calc(100% - 32px));padding:11px 14px;border:1px solid var(--line);border-radius:9px;background:var(--ink);color:var(--surface);font-size:10px;box-shadow:var(--shadow-hover);opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .18s,transform .18s}
+    .toast.show{opacity:1;transform:translateY(0)}
+    .mobile-menu{display:none}
+    .dashboard-lower{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr) minmax(0,.9fr);gap:13px;margin-top:13px}
+    .timer-card,.dashboard-module-card,.schedule-card,.module-tracker-card,.flashcards-panel{padding:19px}
+    .timer-mode-controls{display:flex;gap:5px;padding:4px;margin:16px auto 10px;border:1px solid var(--line);border-radius:9px;width:max-content;background:var(--surface-2)}
+    .timer-mode-button{border:0;border-radius:6px;background:transparent;color:var(--text-2);padding:7px 11px;font-size:10px;font-weight:600;cursor:pointer}
+    .timer-mode-button.active{color:var(--ink);background:var(--surface);box-shadow:0 1px 4px #11131a18}
+    .timer-face{--timer-progress:0deg;display:grid;place-items:center;width:154px;height:154px;margin:14px auto;border-radius:50%;background:conic-gradient(var(--accent) var(--timer-progress),var(--line) var(--timer-progress));transition:background .3s}
+    .timer-face-inner{display:flex;align-items:center;justify-content:center;flex-direction:column;width:140px;height:140px;border-radius:50%;background:var(--surface)}
+    .timer-face-inner #timer-display{font-size:35px;font-weight:650;letter-spacing:-1.5px}
+    .timer-face-inner #timer-status{margin-top:4px;color:var(--text-3);font-size:9px}
+    .timer-link-field{max-width:360px;margin:0 auto}
+    .timer-controls{display:flex;justify-content:center;gap:8px;margin-top:13px}
+    .timer-controls .primary-btn{min-width:128px;justify-content:center}
+    .timer-note{text-align:center;color:var(--text-3);font-size:9px;margin:12px 0 0}
+    .dashboard-module-list,.schedule-list{display:grid;gap:8px;margin-top:15px}
+    .dashboard-module-row,.schedule-row,.module-card,.flashcard{border:1px solid var(--line);border-radius:10px;background:var(--surface);transition:transform .18s,border-color .18s,box-shadow .18s}
+    .dashboard-module-row:hover,.schedule-row:hover,.module-card:hover,.flashcard:hover{transform:translateY(-1px);border-color:var(--line-strong);box-shadow:0 7px 20px #13182b0a}
+    .dashboard-module-row{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:10px}
+    .module-row-name{font-size:11px;font-weight:600;color:var(--ink)}
+    .module-row-subject{font-size:9px;color:var(--text-3);margin-top:3px}
+    .module-quick-add{margin-top:13px}
+    .yield-time-list{display:grid;gap:12px;margin-top:18px}
+    .yield-time-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center}
+    .yield-time-label{font-size:10px;color:var(--text-2)}
+    .yield-time-value{font:600 10px var(--mono);color:var(--ink)}
+    .yield-time-track{grid-column:1/-1;height:4px;overflow:hidden;border-radius:999px;background:var(--surface-2)}
+    .yield-time-fill{height:100%;width:0;border-radius:inherit;transition:width .3s ease}
+    .yield-time-fill.high{background:#e06565}.yield-time-fill.medium{background:#d5a342}.yield-time-fill.low{background:#4eae7e}.yield-time-fill.unlinked{background:var(--text-3)}
+    .study-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+    .study-total strong{font:650 21px var(--mono);letter-spacing:-.7px}
+    .study-total span{font-size:9px;color:var(--text-3)}
+    .module-legend{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+    .yield-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:9px;font-weight:650;text-transform:capitalize}
+    .yield-high{color:#bf4547;background:#fff0ef}.yield-medium{color:#a87619;background:#fff7e4}.yield-low{color:#328060;background:#eaf8f0}
+    [data-theme="dark"] .yield-high{color:#ff9693;background:#512d32}.dark .yield-high{color:#ff9693;background:#512d32}
+    [data-theme="dark"] .yield-medium{color:#f0c46a;background:#4a3b25}.dark .yield-medium{color:#f0c46a;background:#4a3b25}
+    [data-theme="dark"] .yield-low{color:#80d7a8;background:#214333}.dark .yield-low{color:#80d7a8;background:#214333}
+    .module-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .module-card{padding:15px}.module-card-head,.module-card-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .module-card h3{font-size:13px;margin:9px 0 3px}.module-card p{font-size:10px;color:var(--text-3);margin:0}
+    .module-weight{font:600 11px var(--mono);color:var(--text-2)}
+    .module-card-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;color:var(--text-3);font-size:9px}
+    .module-card-actions{justify-content:flex-end;margin-top:13px;padding-top:10px;border-top:1px solid var(--line)}
+    .schedule-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px}
+    .schedule-date{font:600 9px var(--mono);color:var(--text-2)}
+    .schedule-title{font-size:11px;font-weight:600;color:var(--ink)}
+    .schedule-meta{font-size:9px;color:var(--text-3);margin-top:4px}
+    .schedule-row .task-action{flex:none}
+    .flashcard-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:15px}
+    .flashcard{padding:16px;min-height:145px;display:flex;flex-direction:column}
+    .flashcard-subject{font-size:9px;font-weight:650;text-transform:uppercase;letter-spacing:.7px;color:var(--accent)}
+    .flashcard-prompt{font-size:13px;line-height:1.55;color:var(--ink);margin:11px 0}
+    .flashcard-answer{font-size:11px;line-height:1.6;color:var(--text-2);padding-top:10px;margin-top:auto;border-top:1px solid var(--line)}
+    .flashcard-actions{display:flex;gap:6px;margin-top:auto;padding-top:10px}
+    .flashcard-actions .quiet-btn{font-size:9px;padding:6px 8px}
+    .dialog-hint{font-size:9px;color:var(--text-3);line-height:1.5;margin:12px 0 0}
+    html[data-theme="dark"]{color-scheme:dark;--bg:#11131a;--surface:#191b24;--surface-2:#1d202a;--surface-muted:#232631;--ink:#eff1f7;--text-2:#b0b5c4;--text-3:#82899c;--line:#2b2e3a;--line-soft:#272a35;--accent:#8ba0ff;--accent-dark:#a5b4ff;--accent-soft:#252c45;--green:#7bd3a6;--green-soft:#20382e;--red:#ff9397;--red-soft:#3a252a;--amber:#f0cb71;--amber-soft:#3a3220;--shadow:0 1px 2px #0003,0 8px 24px #0002;--shadow-hover:0 14px 30px #0005,0 2px 8px #0003}
+    html[data-theme="dark"] .sun{display:none}html[data-theme="dark"] .moon{display:block}
+    html[data-theme="dark"] .theme-switch:not([aria-checked="true"]){background:#454957}
+    @media(max-width:1020px){.sidebar{width:218px}.main{margin-left:218px}.page{padding-left:28px;padding-right:28px}.topbar{padding:0 28px}}
+    @media(max-width:1050px){.dashboard-lower{grid-template-columns:repeat(2,minmax(0,1fr))}.focus-analytics-card{grid-column:1/-1}}
+    @media(max-width:760px){.sidebar{width:62px;padding:18px 9px 14px}.brand{padding:0 6px 27px}.brand-word,.side-label,.nav-text,.privacy-card,.local-status span:not(.local-dot){display:none}.side-nav{gap:6px}.nav-link{width:43px;height:43px;padding:0;justify-content:center}.nav-glyph{font-size:17px}.local-status{justify-content:center;margin:0 0 2px}.main{margin-left:62px}.topbar{height:56px;padding:0 17px}.mobile-menu{display:block}.crumb{display:none}.page{padding:25px 17px}.predict-grid{grid-template-columns:1fr}.summary-grid{gap:8px}.summary-card{padding:13px;min-height:110px}.settings-grid{grid-template-columns:1fr}.dashboard-lower{grid-template-columns:1fr}.focus-analytics-card{grid-column:auto}.module-grid{grid-template-columns:1fr}}
+    @media(max-width:470px){.page{padding:22px 12px}.topbar{padding:0 12px}.top-actions{gap:5px}.summary-grid{grid-template-columns:1fr 1fr}.summary-card:last-child{grid-column:1/-1}.page-head{align-items:flex-start}.page-head .primary-btn{margin-top:14px;white-space:nowrap}.page-head h1{font-size:25px}.page-head .subtitle{max-width:210px}.task-panel{padding-left:13px;padding-right:13px}.section-divider{margin-left:-13px;margin-right:-13px}.task-row{gap:8px}.task-meta{gap:5px}.search-box{width:42%}.task-toolbar{gap:5px}.filter-btn{padding:5px 6px}.task-footer{align-items:flex-start}.dialog{padding:18px}.footer{font-size:7px}.flashcard-grid{grid-template-columns:1fr}.schedule-row{grid-template-columns:55px minmax(0,1fr) auto;gap:7px;padding:10px}.timer-card,.dashboard-module-card,.schedule-card,.module-tracker-card,.flashcards-panel{padding:14px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Main sidebar">
+      <a class="brand" href="#dashboard" data-view-link="dashboard" aria-label="Studyspace home">
+        <span class="brand-icon">s</span><span class="brand-word">studyspace<span class="brand-period">.</span></span>
+      </a>
+      <p class="side-label">WORKSPACE</p>
+      <nav class="side-nav" aria-label="Main navigation">
+        <a class="nav-link active" href="#dashboard" data-view-link="dashboard" aria-label="Dashboard"><span class="nav-glyph" aria-hidden="true">◫</span><span class="nav-text">Dashboard</span></a>
+        <a class="nav-link" href="#predictor" data-view-link="predictor" aria-label="Predictor"><span class="nav-glyph" aria-hidden="true">⌁</span><span class="nav-text">Predictor</span></a>
+        <a class="nav-link" href="#schedule" data-view-link="schedule" aria-label="Study schedule"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-text">Study schedule</span></a>
+        <a class="nav-link" href="#modules" data-view-link="modules" aria-label="Modules"><span class="nav-glyph" aria-hidden="true">▦</span><span class="nav-text">Modules</span></a>
+        <a class="nav-link" href="#flashcards" data-view-link="flashcards" aria-label="Flashcards"><span class="nav-glyph" aria-hidden="true">▱</span><span class="nav-text">Flashcards</span></a>
+        <a class="nav-link" href="#settings" data-view-link="settings" aria-label="Settings"><span class="nav-glyph" aria-hidden="true">⚙</span><span class="nav-text">Settings</span></a>
+      </nav>
+      <div class="side-bottom">
+        <div class="privacy-card"><strong>Quietly productive.</strong><span>Your plans stay yours. Studyspace keeps your data on this device.</span></div>
+        <div class="local-status"><span class="local-dot"></span><span>Private · saved locally</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="crumb"><span id="crumb-section">Workspace</span><b>/</b><strong id="page-date">Today</strong></div>
+        <button class="icon-btn mobile-menu" type="button" id="mobile-menu" aria-label="Return to dashboard">⌂</button>
+        <div class="top-actions">
+          <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode" aria-pressed="false">
+            <svg class="theme-icon sun" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <svg class="theme-icon moon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.2 15.2A8.4 8.4 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" id="export-button" type="button" aria-label="Export backup" title="Export backup">↓</button>
+        </div>
+      </header>
+
+      <div class="page">
+        <section class="page-view" id="dashboard-view" aria-labelledby="dashboard-title">
+          <div class="page-head">
+            <div><p class="eyebrow" id="today-label">YOUR STUDY SPACE</p><h1 id="dashboard-title">Make today <span>count.</span></h1><p class="subtitle">Good work happens one focused step at a time.</p></div>
+            <button class="primary-btn" type="button" id="open-task-modal"><span>＋</span> New goal</button>
+          </div>
+
+          <section class="summary-grid" aria-label="Study progress summary">
+            <article class="summary-card">
+              <div class="summary-top"><span class="summary-label">TODAY'S PROGRESS</span><span class="summary-icon">◉</span></div>
+              <div class="summary-value mono"><span id="today-percent">0</span><small style="font:500 12px var(--sans);color:var(--text-3)">%</small></div>
+              <div class="progress-track" id="today-progress-track" role="progressbar" aria-label="Today's completed study goals" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill" id="today-progress-bar"></div></div>
+              <p class="summary-caption" id="today-progress-caption">0 of 0 goals complete</p>
+            </article>
+            <article class="summary-card">
+              <div class="summary-top"><span class="summary-label">HIGH-YIELD REMAINING</span><span class="summary-icon amber">↗</span></div>
+              <div class="summary-value mono" id="high-yield-remaining">0</div>
+              <p class="summary-caption">Open high-priority or high-yield goals</p>
+            </article>
+            <article class="summary-card">
+              <div class="summary-top"><span class="summary-label">STUDY STREAK</span><span class="summary-icon green">✳</span></div>
+              <div class="summary-value mono"><span id="study-streak">0</span><small style="font:500 12px var(--sans);color:var(--text-3)"> days</small></div>
+              <p class="summary-caption" id="streak-caption">Start a focus session to begin your streak</p>
+              <button class="view-link session-log-link" type="button" id="open-session-modal">＋ Log study time</button>
+            </article>
+          </section>
+
+          <section class="card task-panel" aria-labelledby="tasks-heading">
+            <div class="panel-head">
+              <div class="panel-head-left"><p class="eyebrow">YOUR NEXT STEPS</p><h2 id="tasks-heading">Study goals <span class="count-pill" id="task-count">0 goals</span></h2></div>
+              <button class="quiet-btn" type="button" id="panel-add-task"><span>＋</span> Add goal</button>
+            </div>
+            <div class="section-divider"></div>
+            <div class="task-toolbar">
+              <div class="filter-group" role="group" aria-label="Filter study goals">
+                <button class="filter-btn active" type="button" data-filter="active">Active</button>
+                <button class="filter-btn" type="button" data-filter="all">All</button>
+                <button class="filter-btn" type="button" data-filter="done">Done</button>
+              </div>
+              <input class="search-box" type="search" id="task-search" aria-label="Search goals" placeholder="⌕  Search goals">
+            </div>
+            <div class="task-list" id="task-list"></div>
+            <div class="empty-state" id="task-empty" hidden><strong id="task-empty-title">A fresh page.</strong><span id="task-empty-copy">Add a goal to begin shaping your study day.</span></div>
+            <div class="task-footer"><span id="task-footer-copy">Your progress is saved automatically on this device.</span><button class="view-link" type="button" id="clear-completed" hidden>Clear completed</button></div>
+          </section>
+          <div class="dashboard-lower">
+            <section class="card timer-card" aria-labelledby="timer-title">
+              <div class="panel-head"><div><p class="eyebrow">PROTECT YOUR FOCUS</p><h2 id="timer-title">Focus timer</h2></div><span class="soft-badge" id="timer-mode-badge">25 MIN FOCUS</span></div>
+              <div class="timer-mode-controls" role="group" aria-label="Timer mode"><button type="button" class="timer-mode-button active" data-timer-mode="focus">Focus · 25 min</button><button type="button" class="timer-mode-button" data-timer-mode="break">Break · 5 min</button></div>
+              <div class="timer-face" id="timer-ring"><div class="timer-face-inner"><span id="timer-display" class="mono">25:00</span><span id="timer-status" role="status" aria-live="polite">Ready when you are</span></div></div>
+              <label class="field timer-link-field"><span class="field-label">LINK FOCUS TO</span><select class="field-input" id="timer-link"><option value="">No goal or module</option></select></label>
+              <div class="timer-controls"><button class="primary-btn timer-play" type="button" id="timer-play">Start focus</button><button class="quiet-btn" type="button" id="timer-reset">↺ Reset</button></div>
+              <p class="timer-note" id="timer-session-note">Focus time is logged automatically as you study.</p>
+            </section>
+            <section class="card dashboard-module-card" aria-labelledby="dashboard-modules-title">
+              <div class="panel-head"><div><p class="eyebrow">STUDY WITH INTENTION</p><h2 id="dashboard-modules-title">Module yield</h2></div><button class="view-link" type="button" data-view-link="modules">View all →</button></div>
+              <p class="subtitle">See what deserves your attention first.</p>
+              <div id="dashboard-module-list" class="dashboard-module-list"></div>
+              <div class="empty-state" id="dashboard-modules-empty" hidden><strong>No modules yet.</strong><span>Add modules and exam weights to prioritize your plan.</span></div>
+              <button class="quiet-btn module-quick-add" type="button" id="quick-add-module">＋ Add a module</button>
+            </section>
+            <section class="card focus-analytics-card" aria-labelledby="focus-analytics-title">
+              <div class="panel-head"><div><p class="eyebrow">TIME WELL SPENT</p><h2 id="focus-analytics-title">Focus hours</h2></div><span class="soft-badge">BY YIELD</span></div>
+              <p class="subtitle">Pomodoro sessions linked to a module or its study goal.</p>
+              <div class="yield-time-list">
+                <div class="yield-time-row"><span class="yield-time-label">High-yield modules</span><span class="yield-time-value" id="high-yield-hours">0.00h</span><div class="yield-time-track"><div class="yield-time-fill high" id="high-yield-hours-bar"></div></div></div>
+                <div class="yield-time-row"><span class="yield-time-label">Medium-yield modules</span><span class="yield-time-value" id="medium-yield-hours">0.00h</span><div class="yield-time-track"><div class="yield-time-fill medium" id="medium-yield-hours-bar"></div></div></div>
+                <div class="yield-time-row"><span class="yield-time-label">Low-yield modules</span><span class="yield-time-value" id="low-yield-hours">0.00h</span><div class="yield-time-track"><div class="yield-time-fill low" id="low-yield-hours-bar"></div></div></div>
+                <div class="yield-time-row"><span class="yield-time-label">Not linked to a module</span><span class="yield-time-value" id="unlinked-hours">0.00h</span><div class="yield-time-track"><div class="yield-time-fill unlinked" id="unlinked-hours-bar"></div></div></div>
+              </div>
+              <div class="study-total"><span>Total study time logged</span><strong class="mono" id="total-study-hours">0.00h</strong></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page-view" id="predictor-view" aria-labelledby="predictor-title" hidden>
+          <div class="page-head"><div><p class="eyebrow">PATTERNS, NOT GUESSWORK</p><h1 id="predictor-title">Exam <span>predictor.</span></h1><p class="subtitle">Log past-paper questions and see what keeps coming back.</p></div><span class="soft-badge" id="paper-total">0 papers logged</span></div>
+          <div class="predict-grid">
+            <section class="card predict-card" aria-labelledby="log-paper-title">
+              <p class="eyebrow">BUILD YOUR PAPER LIBRARY</p><h2 id="log-paper-title">Log a past-paper question</h2><p class="subtitle">Topics are grouped by subject and ranked by how many different exam years they appear in.</p>
+              <form class="topic-form" id="question-form">
+                <label class="field field-wide"><span class="field-label">Question or topic</span><textarea class="field-input" id="question-topic" maxlength="180" required placeholder="e.g. Explain the stages of cellular respiration"></textarea></label>
+                <label class="field"><span class="field-label">Subject</span><input class="field-input" id="question-subject" maxlength="60" placeholder="Biology"></label>
+                <label class="field"><span class="field-label">Exam year</span><input class="field-input" id="question-year" type="number" min="1900" max="2200" required></label>
+                <label class="field field-wide"><span class="field-label">Tags <span style="font-weight:400;color:var(--text-3)">· comma separated</span></span><input class="field-input" id="question-tags" maxlength="160" placeholder="long answer, diagrams"></label>
+                <button class="primary-btn" type="submit">＋ Add to paper library</button>
+              </form>
+            </section>
+
+            <section class="card predict-card" aria-labelledby="focus-list-title">
+              <div class="panel-head"><div><p class="eyebrow">LET THE PATTERNS SPEAK</p><h2 id="focus-list-title">Predicted exam focus</h2></div><span class="soft-badge">LIVE</span></div>
+              <p class="subtitle">Recurring topics, ranked by unique exam years.</p>
+              <div class="focus-list" id="focus-list"></div>
+              <div class="empty-state" id="focus-empty" hidden><strong>Patterns will appear here.</strong><span>Log questions from different exam years to find recurring topics.</span></div>
+            </section>
+          </div>
+          <section class="card predict-card" style="margin-top:13px" aria-labelledby="paper-table-title">
+            <div class="panel-head"><div><p class="eyebrow">YOUR SOURCE MATERIAL</p><h2 id="paper-table-title">Past-paper entries</h2></div><span class="count-pill" id="entry-count">0 entries</span></div>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Question / Topic</th><th scope="col">Subject &amp; tags</th><th scope="col">Year</th><th scope="col">Recurrence</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="question-table-body"></tbody></table></div>
+            <div class="empty-state" id="question-table-empty"><strong>Your paper library is empty.</strong><span>Add a past-paper question above to get started.</span></div>
+          </section>
+        </section>
+
+        <section class="page-view" id="schedule-view" aria-labelledby="schedule-title" hidden>
+          <div class="page-head"><div><p class="eyebrow">ONE CLEAR NEXT STEP</p><h1 id="schedule-title">Study <span>schedule.</span></h1><p class="subtitle">Upcoming deadlines first, then the work with the highest yield.</p></div><span class="soft-badge">SMART ORDER</span></div>
+          <section class="card schedule-card"><div class="panel-head"><div><p class="eyebrow">YOUR UPCOMING WORK</p><h2>Urgency &amp; priority</h2></div><span class="count-pill" id="schedule-count">0 items</span></div><div class="schedule-list" id="schedule-list"></div><div class="empty-state" id="schedule-empty" hidden><strong>Your calendar has room to grow.</strong><span>Add a due date to a goal or an exam date to a module.</span></div></section>
+        </section>
+
+        <section class="page-view" id="modules-view" aria-labelledby="modules-title" hidden>
+          <div class="page-head"><div><p class="eyebrow">TURN EXAM DATA INTO A PLAN</p><h1 id="modules-title">Module <span>tracker.</span></h1><p class="subtitle">Modules inherit yield from their exam weighting or recurring paper topics.</p></div><button class="primary-btn" type="button" id="add-module-button">＋ Add module</button></div>
+          <section class="card module-tracker-card"><div class="module-legend"><span class="yield-badge yield-high">High yield</span><span class="yield-badge yield-medium">Medium yield</span><span class="yield-badge yield-low">Low yield</span></div><div id="module-list" class="module-grid"></div><div class="empty-state" id="modules-empty" hidden><strong>Your module map starts here.</strong><span>Add a subject module and exam weight to build a high-yield study plan.</span></div></section>
+        </section>
+
+        <section class="page-view" id="flashcards-view" aria-labelledby="flashcards-title" hidden>
+          <div class="page-head"><div><p class="eyebrow">RETRIEVE, REPEAT, REMEMBER</p><h1 id="flashcards-title">Quick <span>revise.</span></h1><p class="subtitle">Test yourself on tricky concepts before they slip away.</p></div><button class="primary-btn" type="button" id="add-flashcard-button">＋ New flashcard</button></div>
+          <section class="card flashcards-panel"><div class="panel-head"><div><p class="eyebrow">ACTIVE RECALL VAULT</p><h2>Saved concepts</h2></div><span class="count-pill" id="flashcard-count">0 cards</span></div><div class="flashcard-grid" id="flashcard-list"></div><div class="empty-state" id="flashcards-empty" hidden><strong>Keep the tough concepts close.</strong><span>Add a prompt and answer to create your first revision card.</span></div></section>
+        </section>
+
+        <section class="page-view" id="settings-view" aria-labelledby="settings-title" hidden>
+          <div class="page-head"><div><p class="eyebrow">MAKE IT YOURS</p><h1 id="settings-title">Your <span>workspace.</span></h1><p class="subtitle">A few thoughtful settings for your study space.</p></div></div>
+          <div class="settings-grid">
+            <section class="card settings-card">
+              <p class="eyebrow">APPEARANCE</p><h2>Color theme</h2><p class="subtitle">Choose the look that feels right for your study sessions.</p>
+              <div class="setting-row"><div><strong id="theme-setting-label">Light appearance</strong><small>Switch between light and dark mode.</small></div><button class="theme-switch" id="settings-theme-toggle" type="button" role="switch" aria-label="Use dark appearance" aria-checked="false"></button></div>
+            </section>
+            <section class="card settings-card">
+              <p class="eyebrow">YOUR DATA, YOUR CALL</p><h2>Backup &amp; restore</h2><p class="subtitle">Export or restore your goals, modules, focus history, paper entries, timer state, and flashcards.</p>
+              <div class="settings-actions"><button class="primary-btn" type="button" id="settings-export">↓ Export Data (JSON)</button><button class="quiet-btn" type="button" id="settings-import">↑ Import Data</button><input type="file" id="import-file" accept="application/json,.json" hidden></div>
+              <div class="setting-row"><div><strong>Local-first storage</strong><small id="storage-summary">Your data stays in this browser.</small></div><span class="soft-badge">PRIVATE</span></div>
+            </section>
+            <section class="card settings-card">
+              <p class="eyebrow">ABOUT YOUR GOALS</p><h2>High-yield scoring</h2><p class="subtitle">A goal counts as high-yield if you mark it High priority or link it to a module scored as heavily tested. This keeps the remaining count transparent and actionable.</p>
+              <span class="soft-badge">HIGH PRIORITY + HIGH-YIELD MODULES</span>
+            </section>
+          </div>
+        </section>
+        <footer class="footer"><span>Built for focused progress <span style="color:var(--accent)">✳</span></span><span>Private by default · Stored on this device</span></footer>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="dialog" id="task-dialog" aria-labelledby="task-dialog-title">
+    <form id="task-form">
+      <div class="dialog-head"><div><p class="eyebrow">A CLEAR NEXT STEP</p><h2 id="task-dialog-title">Add a study goal</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="Close dialog">×</button></div>
+      <input id="task-id" type="hidden">
+      <div class="dialog-fields">
+        <label class="field"><span class="field-label">Title</span><input class="field-input" id="task-title-input" maxlength="120" required placeholder="e.g. Review organic chemistry reactions"></label>
+        <label class="field"><span class="field-label">Description <span style="font-weight:400;color:var(--text-3)">· optional</span></span><textarea class="field-input" id="task-description" maxlength="600" placeholder="A note about what you want to cover..."></textarea></label>
+        <div class="dialog-two">
+          <label class="field"><span class="field-label">Priority</span><select class="field-input" id="task-priority"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></label>
+          <label class="field"><span class="field-label">Due date</span><input class="field-input" id="task-due" type="date" required></label>
+        </div>
+        <label class="field"><span class="field-label">Linked module · optional</span><select class="field-input" id="task-module"><option value="">No module</option></select></label>
+      </div>
+      <div class="dialog-actions"><button class="quiet-btn" type="button" data-close-dialog>Cancel</button><button class="primary-btn" type="submit" id="task-save-button">Save goal</button></div>
+    </form>
+  </dialog>
+  <dialog class="dialog" id="session-dialog" aria-labelledby="session-dialog-title">
+    <form id="session-form">
+      <div class="dialog-head"><div><p class="eyebrow">SMALL STEPS ADD UP</p><h2 id="session-dialog-title">Log study time</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="Close dialog">×</button></div>
+      <div class="dialog-fields">
+        <label class="field"><span class="field-label">Minutes studied</span><input class="field-input" id="session-minutes" type="number" min="1" max="1440" required value="25"></label>
+        <label class="field"><span class="field-label">Study date</span><input class="field-input" id="session-date" type="date" required></label>
+      </div>
+      <div class="dialog-actions"><button class="quiet-btn" type="button" data-close-dialog>Cancel</button><button class="primary-btn" type="submit">Save session</button></div>
+    </form>
+  </dialog>
+  <dialog class="dialog" id="module-dialog" aria-labelledby="module-dialog-title">
+    <form id="module-form">
+      <div class="dialog-head"><div><p class="eyebrow">EXAM-WEIGHTED REVISION</p><h2 id="module-dialog-title">Add a module</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="Close dialog">×</button></div>
+      <input id="module-id" type="hidden">
+      <div class="dialog-fields">
+        <label class="field"><span class="field-label">Module name</span><input class="field-input" id="module-name" maxlength="100" required placeholder="e.g. Cell biology"></label>
+        <div class="dialog-two"><label class="field"><span class="field-label">Subject</span><input class="field-input" id="module-subject" maxlength="60" required placeholder="Biology"></label><label class="field"><span class="field-label">Exam weight (%)</span><input class="field-input" id="module-weight" type="number" min="0" max="100" step="0.1" placeholder="Optional"></label></div>
+        <div class="dialog-two"><label class="field"><span class="field-label">Study by</span><input class="field-input" id="module-due" type="date"></label><label class="field"><span class="field-label">Exam date</span><input class="field-input" id="module-exam-date" type="date"></label></div>
+      </div>
+      <p class="dialog-hint">20%+ is high yield · 10%+ is medium yield. Without a weight, recurring paper topics set the score.</p>
+      <div class="dialog-actions"><button class="quiet-btn" type="button" data-close-dialog>Cancel</button><button class="primary-btn" type="submit">Save module</button></div>
+    </form>
+  </dialog>
+  <dialog class="dialog" id="flashcard-dialog" aria-labelledby="flashcard-dialog-title">
+    <form id="flashcard-form">
+      <div class="dialog-head"><div><p class="eyebrow">ACTIVE RECALL VAULT</p><h2 id="flashcard-dialog-title">Add a flashcard</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="Close dialog">×</button></div>
+      <input id="flashcard-id" type="hidden">
+      <div class="dialog-fields">
+        <label class="field"><span class="field-label">Prompt or concept</span><textarea class="field-input" id="flashcard-front" maxlength="240" required placeholder="What is the chain rule?"></textarea></label>
+        <label class="field"><span class="field-label">Answer or explanation</span><textarea class="field-input" id="flashcard-back" maxlength="600" required placeholder="Write the answer you'd like to recall."></textarea></label>
+        <label class="field"><span class="field-label">Subject · optional</span><input class="field-input" id="flashcard-subject" maxlength="60" placeholder="Mathematics"></label>
+      </div>
+      <div class="dialog-actions"><button class="quiet-btn" type="button" data-close-dialog>Cancel</button><button class="primary-btn" type="submit">Save flashcard</button></div>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><p style="padding:24px;text-align:center">Enable JavaScript to use Studyspace and save your study data on this device.</p></noscript>
+
+  <script>
+    (() => {
+      "use strict";
+      const STORAGE_KEY = "studyspace-data-v1";
+      const THEME_KEY = "studyspace-theme";
+      const $ = (selector, root = document) => root.querySelector(selector);
+      const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+      const makeId = () => globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const todayISO = () => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      };
+      const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[character]);
+      const emptyData = () => ({ version: 1, tasks: [], sessions: [], questions: [], modules: [], logs: [], flashcards: [], timer: null });
+      let toastTimeout;
+      let currentFilter = "active";
+
+      function loadData() {
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (!stored) return emptyData();
+          const parsed = JSON.parse(stored);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Saved study data must be a JSON object.");
+          return {
+            ...emptyData(), ...parsed,
+            tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+            sessions: Array.isArray(parsed.sessions) ? parsed.sessions : (Array.isArray(parsed.logs) ? parsed.logs : []),
+            logs: Array.isArray(parsed.logs) ? parsed.logs : (Array.isArray(parsed.sessions) ? parsed.sessions : []),
+            questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+            modules: Array.isArray(parsed.modules) ? parsed.modules : [],
+            flashcards: Array.isArray(parsed.flashcards) ? parsed.flashcards : [],
+            timer: parsed.timer && typeof parsed.timer === "object" ? parsed.timer : null
+          };
+        } catch (error) {
+          console.error("Unable to load local study data:", error);
+          showToast("Saved data could not be read. Check this browser's storage.");
+          return emptyData();
+        }
+      }
+
+      let data = loadData();
+
+      function saveData() {
+        try {
+          const serialized = JSON.stringify(data);
+          localStorage.setItem(STORAGE_KEY, serialized);
+          $("#storage-summary").textContent = `${data.tasks.length} goals · ${data.questions.length} paper entries saved in this browser.`;
+          return true;
+        } catch (error) {
+          console.error("Unable to save local study data:", error);
+          showToast("Couldn't save your changes. Check available browser storage.");
+          return false;
+        }
+      }
+
+      function showToast(message) {
+        const toast = $("#toast");
+        toast.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => toast.classList.remove("show"), 2600);
+      }
+
+      function dateFromISO(value) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+        const [year, month, day] = value.split("-").map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+      }
+
+      function dayDifference(value) {
+        const target = dateFromISO(value);
+        const today = dateFromISO(todayISO());
+        return target && today ? Math.round((target - today) / 86400000) : Infinity;
+      }
+
+      function friendlyDue(value) {
+        const difference = dayDifference(value);
+        if (difference === 0) return "Due today";
+        if (difference === 1) return "Due tomorrow";
+        if (difference === -1) return "Overdue by 1 day";
+        if (difference < -1 && Number.isFinite(difference)) return `Overdue by ${Math.abs(difference)} days`;
+        const date = dateFromISO(value);
+        return date ? `Due ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : "No valid due date";
+      }
+
+      function priorityRank(priority) { return ({ high: 0, medium: 1, low: 2 })[priority] ?? 1; }
+
+      function moduleLevel(module) {
+        if (!module) return "low";
+        const weight = Number(module.weight);
+        if (module.weight !== "" && module.weight != null && Number.isFinite(weight)) return weight >= 20 ? "high" : weight >= 10 ? "medium" : "low";
+        const terms = String(module.name || "").toLocaleLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2);
+        const matches = data.questions.filter((question) => {
+          const subject = String(question.subject || module.subject || "").toLocaleLowerCase();
+          const topic = String(question.topic || "").toLocaleLowerCase();
+          return subject === String(module.subject || "").toLocaleLowerCase() && terms.some((term) => topic.includes(term));
+        });
+        const years = new Set(matches.map((question) => question.year)).size;
+        const score = Math.min(100, years * 35 + matches.length * 10);
+        return score >= 60 ? "high" : score >= 25 ? "medium" : "low";
+      }
+
+      function taskIsHighYield(task) {
+        return task.priority === "high" || (task.moduleId && moduleLevel(data.modules.find((module) => module.id === task.moduleId)) === "high");
+      }
+
+      const TIMER_LENGTHS = { focus: 25 * 60, break: 5 * 60 };
+      let timerInterval = null;
+
+      function timerRemaining() {
+        const timer = data.timer;
+        if (!timer) return TIMER_LENGTHS.focus;
+        if (timer.running && timer.startedAt) {
+          const elapsed = Math.max(0, Math.floor((Date.now() - timer.startedAt) / 1000));
+          return Math.max(0, timer.remaining - elapsed);
+        }
+        return Math.max(0, timer.remaining ?? TIMER_LENGTHS[timer.mode] ?? TIMER_LENGTHS.focus);
+      }
+
+      function timerTargetLabel(value) {
+        if (!value) return "No goal or module";
+        const [type, id] = value.split(":", 2);
+        return type === "task" ? data.tasks.find((task) => task.id === id)?.title || "Study goal"
+          : data.modules.find((module) => module.id === id)?.name || "Module";
+      }
+
+      function updateTimerLinkOptions() {
+        const select = $("#timer-link");
+        const selected = data.timer?.link || select.value;
+        const options = ['<option value="">No goal or module</option>'];
+        const tasks = data.tasks.filter((task) => !task.done);
+        if (tasks.length) options.push(`<optgroup label="Active goals">${tasks.map((task) => `<option value="task:${escapeHTML(task.id)}">${escapeHTML(task.title)}</option>`).join("")}</optgroup>`);
+        if (data.modules.length) options.push(`<optgroup label="Modules">${data.modules.map((module) => `<option value="module:${escapeHTML(module.id)}">${escapeHTML(module.subject)} · ${escapeHTML(module.name)}</option>`).join("")}</optgroup>`);
+        select.innerHTML = options.join("");
+        if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+        select.disabled = Boolean(data.timer?.running);
+      }
+
+      function renderTimer() {
+        const timer = data.timer || { mode: "focus", remaining: TIMER_LENGTHS.focus, running: false, link: "" };
+        const mode = timer.mode === "break" ? "break" : "focus";
+        const remaining = timerRemaining();
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        const total = TIMER_LENGTHS[mode];
+        const elapsed = total - remaining;
+        $("#timer-display").textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+        $("#timer-mode-badge").textContent = mode === "focus" ? "25 MIN FOCUS" : "5 MIN BREAK";
+        $("#timer-status").textContent = timer.running ? "Stay with this moment" : remaining === 0 ? "Session complete" : timer.paused ? "Paused · ready to resume" : "Ready when you are";
+        $("#timer-play").textContent = timer.running ? "Pause session" : remaining === 0 ? "Start again" : "Start focus";
+        $("#timer-ring").style.setProperty("--timer-progress", `${Math.round(elapsed / total * 360)}deg`);
+        $$(".timer-mode-button").forEach((button) => {
+          const active = button.dataset.timerMode === mode;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-pressed", String(active));
+        });
+        updateTimerLinkOptions();
+        $("#timer-session-note").textContent = mode === "focus" && elapsed > 0
+          ? `${Math.floor(elapsed / 60)}m focused · linked to ${timerTargetLabel(timer.link)}`
+          : mode === "focus" ? "Focus time is logged automatically as you study." : "Breaks are for resting, and aren't added to study time.";
+      }
+
+      function logFocusSeconds(seconds, timer) {
+        if (seconds < 1 || timer.mode !== "focus") return;
+        const link = timer.link || "";
+        const [targetType, targetId] = link.split(":", 2);
+        const session = {
+          id: makeId(), date: todayISO(), minutes: seconds / 60, seconds, createdAt: Date.now(),
+          source: "pomodoro", targetType: targetType || "", targetId: targetId || "",
+          moduleId: targetType === "module" ? targetId : "",
+          taskId: targetType === "task" ? targetId : ""
+        };
+        data.sessions.push(session);
+        data.logs = data.sessions;
+      }
+
+      function finalizeRunningTimer(timer) {
+        if (!timer?.running) return;
+        const remaining = timerRemaining();
+        const elapsed = Math.max(0, Math.min(TIMER_LENGTHS[timer.mode] || TIMER_LENGTHS.focus, timer.remaining - remaining));
+        if (timer.mode === "focus" && elapsed) logFocusSeconds(elapsed, timer);
+        if (remaining <= 0) {
+          timer.mode = timer.mode === "focus" ? "break" : "focus";
+          timer.remaining = TIMER_LENGTHS[timer.mode];
+          timer.paused = false;
+        } else {
+          timer.remaining = remaining;
+          timer.paused = true;
+        }
+        timer.running = false;
+        delete timer.startedAt;
+      }
+
+      function persistTimerState() {
+        return saveData();
+      }
+
+      function startTimer() {
+        const timer = data.timer || { mode: "focus", remaining: TIMER_LENGTHS.focus, running: false, link: "" };
+        const remaining = timerRemaining();
+        if (remaining <= 0) {
+          if (timer.mode === "focus" && timer.remaining > 0) logFocusSeconds(timer.remaining, timer);
+          timer.mode = timer.mode === "focus" ? "break" : "focus";
+          timer.remaining = TIMER_LENGTHS[timer.mode];
+        } else timer.remaining = remaining;
+        timer.running = true;
+        timer.paused = false;
+        timer.startedAt = Date.now();
+        timer.link = $("#timer-link").value || "";
+        data.timer = timer;
+        if (!persistTimerState()) { timer.running = false; delete timer.startedAt; return; }
+        clearInterval(timerInterval);
+        timerInterval = setInterval(tickTimer, 1000);
+        renderTimer();
+      }
+
+      function pauseTimer() {
+        if (!data.timer?.running) return;
+        const timer = data.timer;
+        const remaining = timerRemaining();
+        const elapsed = Math.max(0, Math.min(TIMER_LENGTHS[timer.mode], timer.remaining - remaining));
+        if (elapsed) logFocusSeconds(elapsed, timer);
+        timer.remaining = remaining;
+        timer.running = false;
+        timer.paused = true;
+        delete timer.startedAt;
+        clearInterval(timerInterval);
+        timerInterval = null;
+        persistTimerState();
+        render();
+      }
+
+      function tickTimer() {
+        if (!data.timer?.running) return;
+        const remaining = timerRemaining();
+        if (remaining > 0) {
+          if (data.timer.mode === "focus") $("#timer-session-note").textContent = `${Math.floor((data.timer.remaining - remaining) / 60)}m focused · linked to ${timerTargetLabel(data.timer.link)}`;
+          return renderTimer();
+        }
+        const timer = data.timer;
+        const elapsed = Math.max(0, timer.remaining);
+        if (elapsed) logFocusSeconds(elapsed, timer);
+        timer.mode = timer.mode === "focus" ? "break" : "focus";
+        timer.remaining = TIMER_LENGTHS[timer.mode];
+        timer.running = false;
+        timer.paused = false;
+        delete timer.startedAt;
+        clearInterval(timerInterval);
+        timerInterval = null;
+        persistTimerState();
+        render();
+        showToast(timer.mode === "break" ? "Focus session complete. Take a short break." : "Break complete. Ready for another focus session?");
+        try {
+          if ("Notification" in window && Notification.permission === "granted") new Notification("Studyspace", { body: timer.mode === "break" ? "Focus session complete. Take a short break." : "Break complete. Ready for another focus session?" });
+        } catch (error) { console.error("Could not show timer notification:", error); }
+        try {
+          const audioContext = new AudioContext();
+          const oscillator = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          oscillator.connect(gain); gain.connect(audioContext.destination);
+          gain.gain.setValueAtTime(0.08, audioContext.currentTime);
+          oscillator.frequency.value = 660;
+          oscillator.start(); oscillator.stop(audioContext.currentTime + 0.18);
+          oscillator.onended = () => audioContext.close();
+        } catch (error) { console.info("Audio alert unavailable:", error); }
+      }
+
+      function resetTimer() {
+        const timer = data.timer || { mode: "focus", link: "" };
+        if (timer.running) {
+          const elapsed = Math.max(0, Math.min(TIMER_LENGTHS[timer.mode], timer.remaining - timerRemaining()));
+          if (elapsed) logFocusSeconds(elapsed, timer);
+        }
+        clearInterval(timerInterval);
+        timerInterval = null;
+        timer.mode = timer.mode === "break" ? "break" : "focus";
+        timer.remaining = TIMER_LENGTHS[timer.mode];
+        timer.running = false;
+        timer.paused = false;
+        delete timer.startedAt;
+        data.timer = timer;
+        persistTimerState();
+        render();
+      }
+
+      function setTimerMode(mode) {
+        if (!TIMER_LENGTHS[mode]) return;
+        if (data.timer?.running) pauseTimer();
+        const timer = data.timer || { link: "" };
+        timer.mode = mode;
+        timer.remaining = TIMER_LENGTHS[mode];
+        timer.running = false;
+        timer.paused = false;
+        delete timer.startedAt;
+        data.timer = timer;
+        persistTimerState();
+        renderTimer();
+      }
+
+      function renderHeader() {
+        const now = new Date();
+        $("#today-label").textContent = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }).toUpperCase();
+        $("#page-date").textContent = now.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      }
+
+      function renderSummary() {
+        const todayTasks = data.tasks.filter((task) => task.due === todayISO());
+        const completed = todayTasks.filter((task) => task.done).length;
+        const percent = todayTasks.length ? Math.round(completed / todayTasks.length * 100) : 0;
+        $("#today-percent").textContent = String(percent);
+        $("#today-progress-bar").style.width = `${percent}%`;
+        $("#today-progress-track").setAttribute("aria-valuenow", String(percent));
+        $("#today-progress-caption").textContent = `${completed} of ${todayTasks.length} ${todayTasks.length === 1 ? "goal" : "goals"} complete`;
+        $("#high-yield-remaining").textContent = String(data.tasks.filter((task) => !task.done && taskIsHighYield(task)).length);
+        const activeDates = new Set(data.logs.concat(data.sessions).map((session) => session.date).filter((date) => dateFromISO(date)));
+        const cursor = dateFromISO(todayISO());
+        if (!activeDates.has(todayISO())) cursor.setDate(cursor.getDate() - 1);
+        let streak = 0;
+        while (activeDates.has(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`)) {
+          streak += 1;
+          cursor.setDate(cursor.getDate() - 1);
+        }
+        $("#study-streak").textContent = String(streak);
+        $("#streak-caption").textContent = streak ? "Keep your focused days going" : "Start a focus session to begin your streak";
+      }
+
+      function renderStudyAnalytics() {
+        const sessionsById = new Map();
+        data.sessions.concat(data.logs).forEach((session, index) => {
+          const key = session.id || `${session.date}-${session.minutes}-${session.createdAt}-${index}`;
+          if (!sessionsById.has(key)) sessionsById.set(key, session);
+        });
+        const totals = { high: 0, medium: 0, low: 0, unlinked: 0 };
+        let allSeconds = 0;
+        sessionsById.forEach((session) => {
+          const seconds = Number.isFinite(Number(session.seconds)) && Number(session.seconds) >= 0
+            ? Number(session.seconds) : Math.max(0, Number(session.minutes) || 0) * 60;
+          allSeconds += seconds;
+          let moduleId = session.moduleId || "";
+          if (!moduleId && session.targetType === "module") moduleId = session.targetId || "";
+          if (!moduleId && session.taskId) moduleId = data.tasks.find((task) => task.id === session.taskId)?.moduleId || "";
+          if (!moduleId && session.targetType === "task") moduleId = data.tasks.find((task) => task.id === session.targetId)?.moduleId || "";
+          const module = data.modules.find((item) => item.id === moduleId);
+          const level = module ? moduleLevel(module) : "unlinked";
+          totals[level] += seconds;
+        });
+        const formatHours = (seconds) => `${(seconds / 3600).toFixed(2)}h`;
+        $("#total-study-hours").textContent = formatHours(allSeconds);
+        ["high", "medium", "low", "unlinked"].forEach((level) => {
+          const label = level === "unlinked" ? "unlinked" : `${level}-yield`;
+          $(`#${label}-hours`).textContent = formatHours(totals[level]);
+          $(`#${label}-hours-bar`).style.width = allSeconds ? `${Math.min(100, totals[level] / allSeconds * 100)}%` : "0%";
+        });
+      }
+
+      function renderTasks() {
+        const query = $("#task-search").value.trim().toLocaleLowerCase();
+        const filtered = data.tasks.filter((task) => {
+          if (currentFilter === "active" && task.done) return false;
+          if (currentFilter === "done" && !task.done) return false;
+          const text = `${task.title || ""} ${task.description || ""} ${task.subject || ""}`.toLocaleLowerCase();
+          return !query || text.includes(query);
+        }).sort((a, b) => Number(a.done) - Number(b.done) || (a.due || "9999").localeCompare(b.due || "9999") || priorityRank(a.priority) - priorityRank(b.priority));
+        $("#task-count").textContent = `${data.tasks.length} ${data.tasks.length === 1 ? "goal" : "goals"}`;
+        const list = $("#task-list");
+        list.innerHTML = filtered.map((task) => {
+          const priority = ["high", "medium", "low"].includes(task.priority) ? task.priority : "medium";
+          return `<article class="task-row ${task.done ? "task-done" : ""}">
+            <input class="task-checkbox" type="checkbox" data-task-toggle="${escapeHTML(task.id)}" aria-label="Mark ${escapeHTML(task.title)} complete" ${task.done ? "checked" : ""}>
+            <div class="task-copy"><p class="task-title">${escapeHTML(task.title || "Untitled goal")}</p>${task.description ? `<p class="task-description">${escapeHTML(task.description)}</p>` : ""}<div class="task-meta"><span>${escapeHTML(friendlyDue(task.due))}</span><span>·</span><span class="priority-badge priority-${priority}">${priority}</span>${task.moduleId ? `<span>·</span><span>${escapeHTML(data.modules.find((module) => module.id === task.moduleId)?.name || "Linked module")}</span>` : ""}</div></div>
+            <div class="task-actions"><button class="task-action" type="button" data-edit-task="${escapeHTML(task.id)}" aria-label="Edit ${escapeHTML(task.title)}" title="Edit goal">✎</button><button class="task-action" type="button" data-delete-task="${escapeHTML(task.id)}" aria-label="Delete ${escapeHTML(task.title)}" title="Delete goal">×</button></div>
+          </article>`;
+        }).join("");
+        const empty = filtered.length === 0;
+        $("#task-empty").hidden = !empty;
+        $("#task-empty-title").textContent = query ? "No matching goals." : currentFilter === "done" ? "Nothing completed yet." : currentFilter === "active" && data.tasks.length ? "You're all caught up." : "A fresh page.";
+        $("#task-empty-copy").textContent = query ? "Try another search, or clear your search to see all goals." : currentFilter === "active" && data.tasks.length ? "Add another goal whenever you're ready." : "Add a goal to begin shaping your study day.";
+        $("#clear-completed").hidden = !data.tasks.some((task) => task.done);
+        $("#task-footer-copy").textContent = `${data.tasks.filter((task) => task.done).length} complete · ${data.tasks.filter((task) => !task.done).length} remaining`;
+      }
+
+      function renderModules() {
+        const yieldRank = { high: 0, medium: 1, low: 2 };
+        const sorted = [...data.modules].sort((a, b) => yieldRank[moduleLevel(a)] - yieldRank[moduleLevel(b)] || String(a.subject).localeCompare(String(b.subject)) || String(a.name).localeCompare(String(b.name)));
+        const cardHTML = (module) => {
+          const level = moduleLevel(module);
+          const weight = module.weight !== "" && module.weight != null && Number.isFinite(Number(module.weight)) ? `${Number(module.weight)}% exam weight` : "Scored from past-paper patterns";
+          const linkedTasks = data.tasks.filter((task) => task.moduleId === module.id && !task.done).length;
+          return `<article class="module-card"><div class="module-card-head"><span class="yield-badge yield-${level}">${level} yield</span><span class="module-weight">${escapeHTML(weight)}</span></div><h3>${escapeHTML(module.name)}</h3><p>${escapeHTML(module.subject || "General")}</p><div class="module-card-meta"><span>${linkedTasks} open ${linkedTasks === 1 ? "goal" : "goals"}</span>${module.examDate ? `<span>Exam ${escapeHTML(friendlyDue(module.examDate))}</span>` : ""}${module.due ? `<span>Study by ${escapeHTML(friendlyDue(module.due))}</span>` : ""}</div><div class="module-card-actions"><button class="task-action" type="button" data-edit-module="${escapeHTML(module.id)}" aria-label="Edit ${escapeHTML(module.name)}" title="Edit module">✎</button><button class="task-action" type="button" data-delete-module="${escapeHTML(module.id)}" aria-label="Delete ${escapeHTML(module.name)}" title="Delete module">×</button></div></article>`;
+        };
+        $("#module-list").innerHTML = sorted.map(cardHTML).join("");
+        $("#modules-empty").hidden = sorted.length > 0;
+        const highlights = sorted.slice(0, 4);
+        $("#dashboard-module-list").innerHTML = highlights.map((module) => `<div class="dashboard-module-row"><div><div class="module-row-name">${escapeHTML(module.name)}</div><div class="module-row-subject">${escapeHTML(module.subject || "General")}</div></div><span class="yield-badge yield-${moduleLevel(module)}">${moduleLevel(module)}</span></div>`).join("");
+        $("#dashboard-modules-empty").hidden = highlights.length > 0;
+      }
+
+      function renderSchedule() {
+        const entries = [
+          ...data.tasks.filter((task) => !task.done && dateFromISO(task.due)).map((task) => ({
+            id: task.id, type: "task", title: task.title, date: task.due,
+            priority: priorityRank(task.priority), yield: task.moduleId ? ({ high: 0, medium: 1, low: 2 })[moduleLevel(data.modules.find((module) => module.id === task.moduleId))] : 2,
+            badge: task.moduleId ? `${data.modules.find((module) => module.id === task.moduleId)?.name || "Module"} · ${moduleLevel(data.modules.find((module) => module.id === task.moduleId))} yield` : `${task.priority || "medium"} priority`,
+            moduleId: task.moduleId
+          })),
+          ...data.modules.filter((module) => dateFromISO(module.examDate)).map((module) => ({
+            id: module.id, type: "exam", title: `${module.subject || "Subject"} · ${module.name} exam`,
+            date: module.examDate, priority: 1, yield: ({ high: 0, medium: 1, low: 2 })[moduleLevel(module)],
+            badge: `${moduleLevel(module)} yield · exam`, moduleId: module.id
+          }))
+        ].sort((a, b) => a.date.localeCompare(b.date) || a.priority - b.priority || a.yield - b.yield || a.title.localeCompare(b.title));
+        $("#schedule-count").textContent = `${entries.length} ${entries.length === 1 ? "item" : "items"}`;
+        $("#schedule-list").innerHTML = entries.map((entry) => `<article class="schedule-row"><div class="schedule-date">${escapeHTML(dateFromISO(entry.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}</div><div><div class="schedule-title">${escapeHTML(entry.title)}</div><div class="schedule-meta">${escapeHTML(friendlyDue(entry.date))} · ${escapeHTML(entry.badge)}</div></div>${entry.type === "task" ? `<button class="task-action" type="button" data-schedule-edit-task="${escapeHTML(entry.id)}" aria-label="Edit ${escapeHTML(entry.title)}" title="Edit goal">✎</button>` : `<span class="yield-badge yield-${moduleLevel(data.modules.find((module) => module.id === entry.moduleId))}">Exam</span>`}</article>`).join("");
+        $("#schedule-empty").hidden = entries.length > 0;
+      }
+
+      function renderFlashcards() {
+        $("#flashcard-count").textContent = `${data.flashcards.length} ${data.flashcards.length === 1 ? "card" : "cards"}`;
+        $("#flashcard-list").innerHTML = data.flashcards.map((card) => `<article class="flashcard"><span class="flashcard-subject">${escapeHTML(card.subject || "Quick revise")}</span><p class="flashcard-prompt">${escapeHTML(card.front)}</p><div class="flashcard-answer" data-answer-for="${escapeHTML(card.id)}" hidden>${escapeHTML(card.back)}</div><div class="flashcard-actions"><button class="quiet-btn" type="button" data-reveal-card="${escapeHTML(card.id)}" aria-expanded="false">Reveal answer</button><button class="task-action" type="button" data-edit-card="${escapeHTML(card.id)}" aria-label="Edit flashcard">✎</button><button class="task-action" type="button" data-delete-card="${escapeHTML(card.id)}" aria-label="Delete flashcard">×</button></div></article>`).join("");
+        $("#flashcards-empty").hidden = data.flashcards.length > 0;
+      }
+
+      function openModuleDialog(module = null) {
+        $("#module-form").reset();
+        $("#module-id").value = module?.id || "";
+        $("#module-dialog-title").textContent = module ? "Edit module" : "Add a module";
+        $("#module-name").value = module?.name || "";
+        $("#module-subject").value = module?.subject || "";
+        $("#module-weight").value = module?.weight ?? "";
+        $("#module-due").value = module?.due || "";
+        $("#module-exam-date").value = module?.examDate || "";
+        $("#module-dialog").showModal();
+      }
+
+      function openFlashcardDialog(card = null) {
+        $("#flashcard-form").reset();
+        $("#flashcard-id").value = card?.id || "";
+        $("#flashcard-dialog-title").textContent = card ? "Edit flashcard" : "Add a flashcard";
+        $("#flashcard-front").value = card?.front || "";
+        $("#flashcard-back").value = card?.back || "";
+        $("#flashcard-subject").value = card?.subject || "";
+        $("#flashcard-dialog").showModal();
+      }
+
+      function paperGroups() {
+        const groups = new Map();
+        data.questions.forEach((question) => {
+          const topic = String(question.topic || "").trim();
+          const subject = String(question.subject || "").trim();
+          const key = `${subject.toLocaleLowerCase()}::${topic.toLocaleLowerCase()}`;
+          if (!topic) return;
+          if (!groups.has(key)) groups.set(key, { topic, subject, years: new Set(), tags: new Set(), count: 0 });
+          const group = groups.get(key);
+          group.years.add(String(question.year));
+          (Array.isArray(question.tags) ? question.tags : []).forEach((tag) => group.tags.add(tag));
+        });
+        const groupsList = [...groups.values()].map((group) => ({ ...group, count: group.years.size }))
+          .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+        return { groups: groupsList, byKey: groups };
+      }
+
+      function renderPredictor() {
+        const { groups, byKey } = paperGroups();
+        const paperCount = new Set(data.questions.map((question) => `${String(question.subject || "").toLocaleLowerCase()}-${question.year}`)).size;
+        $("#paper-total").textContent = `${paperCount} ${paperCount === 1 ? "paper" : "papers"} logged`;
+        $("#focus-list").innerHTML = groups.slice(0, 7).map((group, index) => `<div class="focus-item"><span class="focus-rank">${String(index + 1).padStart(2, "0")}</span><div><div class="focus-topic">${escapeHTML(group.topic)}</div><div class="focus-meta">${escapeHTML(group.subject || "General")} · ${[...group.years].sort().map(escapeHTML).join(", ")}</div></div><span class="focus-frequency">${group.count} ${group.count === 1 ? "year" : "years"}</span></div>`).join("");
+        $("#focus-empty").hidden = groups.length > 0;
+        $("#entry-count").textContent = `${data.questions.length} ${data.questions.length === 1 ? "entry" : "entries"}`;
+        $("#question-table-body").innerHTML = [...data.questions].sort((a, b) => Number(b.year) - Number(a.year) || String(a.topic).localeCompare(String(b.topic))).map((question) => {
+          const subject = String(question.subject || "").trim();
+          const topic = String(question.topic || "").trim();
+          const group = byKey.get(`${subject.toLocaleLowerCase()}::${topic.toLocaleLowerCase()}`);
+          const tags = Array.isArray(question.tags) ? question.tags : [];
+          return `<tr><td>${escapeHTML(topic)}</td><td>${escapeHTML(subject || "General")}<div class="tag-list" style="margin-top:4px">${tags.length ? tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("") : '<span style="color:var(--text-3)">—</span>'}</div></td><td class="mono">${escapeHTML(question.year)}</td><td><span class="focus-frequency">${group?.count || 1}×</span></td><td><button class="task-action" type="button" data-delete-question="${escapeHTML(question.id)}" aria-label="Delete paper entry">×</button></td></tr>`;
+        }).join("");
+        $("#question-table-empty").hidden = data.questions.length > 0;
+      }
+
+      function renderSettings() {
+        $("#storage-summary").textContent = `${data.tasks.length} goals · ${data.modules.length} modules · ${data.flashcards.length} flashcards saved in this browser.`;
+      }
+
+      function render() {
+        renderHeader();
+        renderSummary();
+        renderStudyAnalytics();
+        renderTasks();
+        renderPredictor();
+        renderModules();
+        renderSchedule();
+        renderFlashcards();
+        renderTimer();
+        renderSettings();
+      }
+
+      function setTheme(theme, persist = false) {
+        const dark = theme === "dark";
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.classList.toggle("dark", dark);
+        const toggle = $("#theme-toggle");
+        const label = `Switch to ${dark ? "light" : "dark"} mode`;
+        toggle.setAttribute("aria-label", label);
+        toggle.setAttribute("title", label);
+        toggle.setAttribute("aria-pressed", String(dark));
+        $("#settings-theme-toggle").setAttribute("aria-checked", String(dark));
+        $("#settings-theme-toggle").setAttribute("aria-label", dark ? "Use light appearance" : "Use dark appearance");
+        $("#theme-setting-label").textContent = dark ? "Dark appearance" : "Light appearance";
+        $("meta[name='theme-color']").content = dark ? "#11131a" : "#f6f8fc";
+        if (persist) {
+          try { localStorage.setItem(THEME_KEY, dark ? "dark" : "light"); }
+          catch (error) { console.error("Could not save appearance preference:", error); showToast("Couldn't save the theme preference."); }
+        }
+      }
+
+      function navigate(view) {
+        const validViews = ["dashboard", "predictor", "schedule", "modules", "flashcards", "settings"];
+        const valid = validViews.includes(view) ? view : "dashboard";
+        $$(".page-view").forEach((section) => { section.hidden = section.id !== `${valid}-view`; });
+        $$(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.viewLink === valid));
+        $("#crumb-section").textContent = ({ dashboard: "Workspace", predictor: "Exam insights", schedule: "Study schedule", modules: "Module tracker", flashcards: "Quick revise", settings: "Settings" })[valid];
+        if (location.hash !== `#${valid}`) history.replaceState(null, "", `#${valid}`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function openTaskDialog(task = null) {
+        $("#task-form").reset();
+        $("#task-id").value = task?.id || "";
+        $("#task-dialog-title").textContent = task ? "Edit study goal" : "Add a study goal";
+        $("#task-title-input").value = task?.title || "";
+        $("#task-description").value = task?.description || "";
+        $("#task-priority").value = ["high", "medium", "low"].includes(task?.priority) ? task.priority : "medium";
+        $("#task-due").value = task?.due || todayISO();
+        updateTimerLinkOptions();
+        $("#task-module").innerHTML = `<option value="">No module</option>${data.modules.map((module) => `<option value="${escapeHTML(module.id)}">${escapeHTML(module.subject)} · ${escapeHTML(module.name)}</option>`).join("")}`;
+        $("#task-module").value = task?.moduleId || "";
+        if (typeof $("#task-dialog").showModal === "function") $("#task-dialog").showModal();
+        else $("#task-dialog").setAttribute("open", "");
+        $("#task-title-input").focus();
+      }
+
+      function closeDialog(dialog) {
+        if (typeof dialog.close === "function") dialog.close();
+        else dialog.removeAttribute("open");
+      }
+
+      function exportBackup() {
+        const contents = { ...data, timer: data.timer ? { ...data.timer } : null, exportedAt: new Date().toISOString() };
+        if (contents.timer?.running) {
+          contents.timer.remaining = timerRemaining();
+          contents.timer.running = false;
+          contents.timer.paused = true;
+          delete contents.timer.startedAt;
+        }
+        const blob = new Blob([JSON.stringify(contents, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `studyspace-backup-${todayISO()}.json`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast("Backup downloaded.");
+      }
+
+      function validImport(value) {
+        const record = (item) => item !== null && typeof item === "object" && !Array.isArray(item);
+        if (!record(value) || !Array.isArray(value.tasks)) return false;
+        return value.tasks.every((task) => record(task) && typeof task.title === "string" && typeof task.id === "string")
+          && (value.questions == null || (Array.isArray(value.questions) && value.questions.every((question) =>
+            record(question) && typeof question.topic === "string" && Number.isInteger(Number(question.year)))))
+          && (value.modules == null || (Array.isArray(value.modules) && value.modules.every((module) => record(module) && typeof module.id === "string" && typeof module.name === "string")))
+          && (value.logs == null || (Array.isArray(value.logs) && value.logs.every((session) => record(session) && typeof session.date === "string")))
+          && (value.sessions == null || (Array.isArray(value.sessions) && value.sessions.every((session) => record(session) && typeof session.date === "string")))
+          && (value.flashcards == null || (Array.isArray(value.flashcards) && value.flashcards.every((card) => record(card) && typeof card.id === "string" && typeof card.front === "string" && typeof card.back === "string")))
+          && (value.timer == null || (record(value.timer) && ["focus", "break"].includes(value.timer.mode) && Number.isFinite(Number(value.timer.remaining)) && Number(value.timer.remaining) >= 0 && Number(value.timer.remaining) <= TIMER_LENGTHS[value.timer.mode]));
+      }
+
+      $("#theme-toggle").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+      $("#settings-theme-toggle").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+      $$("[data-view-link]").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); navigate(link.dataset.viewLink); }));
+      $("#mobile-menu").addEventListener("click", () => navigate("dashboard"));
+      window.addEventListener("hashchange", () => navigate(location.hash.slice(1)));
+      $("#open-task-modal").addEventListener("click", () => openTaskDialog());
+      $("#panel-add-task").addEventListener("click", () => openTaskDialog());
+      $("#quick-add-module").addEventListener("click", () => openModuleDialog());
+      $("#add-module-button").addEventListener("click", () => openModuleDialog());
+      $("#add-flashcard-button").addEventListener("click", () => openFlashcardDialog());
+      $("#timer-play").addEventListener("click", () => data.timer?.running ? pauseTimer() : startTimer());
+      $("#timer-reset").addEventListener("click", resetTimer);
+      $$(".timer-mode-button").forEach((button) => button.addEventListener("click", () => setTimerMode(button.dataset.timerMode)));
+      $("#timer-link").addEventListener("change", () => {
+        const timer = data.timer || { mode: "focus", remaining: TIMER_LENGTHS.focus, running: false };
+        timer.link = $("#timer-link").value;
+        data.timer = timer;
+        persistTimerState();
+        renderTimer();
+      });
+      if (data.timer?.running) {
+        if (timerRemaining() <= 0) tickTimer();
+        else timerInterval = setInterval(tickTimer, 1000);
+      }
+      $("#open-session-modal").addEventListener("click", () => {
+        $("#session-form").reset();
+        $("#session-date").value = todayISO();
+        if (typeof $("#session-dialog").showModal === "function") $("#session-dialog").showModal();
+        else $("#session-dialog").setAttribute("open", "");
+      });
+      $$("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => closeDialog(button.closest("dialog"))));
+      $$("[data-filter]").forEach((button) => button.addEventListener("click", () => {
+        currentFilter = button.dataset.filter;
+        $$("[data-filter]").forEach((item) => item.classList.toggle("active", item === button));
+        renderTasks();
+      }));
+      $("#task-search").addEventListener("input", renderTasks);
+
+      $("#task-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const id = $("#task-id").value;
+        const existing = data.tasks.find((task) => task.id === id);
+        const title = $("#task-title-input").value.trim();
+        const due = $("#task-due").value;
+        if (!title || !dateFromISO(due)) return showToast("Enter a goal title and valid due date.");
+        const task = {
+          id: id || makeId(), title, description: $("#task-description").value.trim(),
+          priority: $("#task-priority").value, due, done: existing?.done || false,
+          moduleId: $("#task-module").value, subject: existing?.subject || "",
+          createdAt: existing?.createdAt || Date.now()
+        };
+        const next = existing ? data.tasks.map((item) => item.id === id ? task : item) : [...data.tasks, task];
+        const prior = data.tasks;
+        data.tasks = next;
+        if (!saveData()) { data.tasks = prior; return; }
+        closeDialog($("#task-dialog"));
+        render();
+        showToast(existing ? "Study goal updated." : "Study goal added.");
+      });
+
+      $("#task-list").addEventListener("change", (event) => {
+        const checkbox = event.target.closest("[data-task-toggle]");
+        if (!checkbox) return;
+        const prior = data.tasks;
+        data.tasks = data.tasks.map((task) => task.id === checkbox.dataset.taskToggle ? { ...task, done: checkbox.checked } : task);
+        if (!saveData()) { data.tasks = prior; return renderTasks(); }
+        render();
+      });
+      $("#task-list").addEventListener("click", (event) => {
+        const edit = event.target.closest("[data-edit-task]");
+        const remove = event.target.closest("[data-delete-task]");
+        if (edit) openTaskDialog(data.tasks.find((task) => task.id === edit.dataset.editTask));
+        if (remove) {
+          const prior = data.tasks;
+          data.tasks = data.tasks.filter((task) => task.id !== remove.dataset.deleteTask);
+          if (!saveData()) { data.tasks = prior; return; }
+          render();
+          showToast("Study goal deleted.");
+        }
+      });
+      $("#clear-completed").addEventListener("click", () => {
+        const prior = data.tasks;
+        data.tasks = data.tasks.filter((task) => !task.done);
+        if (!saveData()) { data.tasks = prior; return; }
+        render();
+        showToast("Completed goals cleared.");
+      });
+
+      $("#module-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const id = $("#module-id").value;
+        const existing = data.modules.find((module) => module.id === id);
+        const name = $("#module-name").value.trim();
+        const subject = $("#module-subject").value.trim();
+        const weightText = $("#module-weight").value;
+        const weight = weightText === "" ? "" : Number(weightText);
+        if (!name || !subject || (weight !== "" && (!Number.isFinite(weight) || weight < 0 || weight > 100))) return showToast("Enter a module, subject, and a valid weight from 0 to 100.");
+        const module = { id: id || makeId(), name, subject, weight, due: $("#module-due").value, examDate: $("#module-exam-date").value, createdAt: existing?.createdAt || Date.now() };
+        const previous = data.modules;
+        data.modules = existing ? data.modules.map((item) => item.id === id ? module : item) : [...data.modules, module];
+        if (!saveData()) { data.modules = previous; return; }
+        closeDialog($("#module-dialog"));
+        render();
+        showToast(existing ? "Module updated." : "Module added.");
+      });
+
+      $("#module-list").addEventListener("click", (event) => {
+        const edit = event.target.closest("[data-edit-module]");
+        const remove = event.target.closest("[data-delete-module]");
+        if (edit) openModuleDialog(data.modules.find((module) => module.id === edit.dataset.editModule));
+        if (remove) {
+          const module = data.modules.find((item) => item.id === remove.dataset.deleteModule);
+          if (!module) return;
+          if (!window.confirm(`Delete "${module.name}"? Linked goals will remain but lose their module link.`)) return;
+          const previousModules = data.modules;
+          const previousTasks = data.tasks;
+          data.modules = data.modules.filter((item) => item.id !== module.id);
+          data.tasks = data.tasks.map((task) => task.moduleId === module.id ? { ...task, moduleId: "" } : task);
+          if (!saveData()) { data.modules = previousModules; data.tasks = previousTasks; return; }
+          render();
+          showToast("Module deleted.");
+        }
+      });
+
+      $("#schedule-list").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-schedule-edit-task]");
+        if (button) openTaskDialog(data.tasks.find((task) => task.id === button.dataset.scheduleEditTask));
+      });
+
+      $("#flashcard-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const id = $("#flashcard-id").value;
+        const existing = data.flashcards.find((card) => card.id === id);
+        const front = $("#flashcard-front").value.trim();
+        const back = $("#flashcard-back").value.trim();
+        if (!front || !back) return showToast("Enter both a prompt and an answer.");
+        const card = { id: id || makeId(), front, back, subject: $("#flashcard-subject").value.trim(), createdAt: existing?.createdAt || Date.now() };
+        const previous = data.flashcards;
+        data.flashcards = existing ? data.flashcards.map((item) => item.id === id ? card : item) : [...data.flashcards, card];
+        if (!saveData()) { data.flashcards = previous; return; }
+        closeDialog($("#flashcard-dialog"));
+        render();
+        showToast(existing ? "Flashcard updated." : "Flashcard added.");
+      });
+
+      $("#flashcard-list").addEventListener("click", (event) => {
+        const reveal = event.target.closest("[data-reveal-card]");
+        const edit = event.target.closest("[data-edit-card]");
+        const remove = event.target.closest("[data-delete-card]");
+        if (reveal) {
+          const answer = $(`[data-answer-for="${CSS.escape(reveal.dataset.revealCard)}"]`);
+          answer.hidden = !answer.hidden;
+          reveal.textContent = answer.hidden ? "Reveal answer" : "Hide answer";
+          reveal.setAttribute("aria-expanded", String(!answer.hidden));
+        }
+        if (edit) openFlashcardDialog(data.flashcards.find((card) => card.id === edit.dataset.editCard));
+        if (remove) {
+          const previous = data.flashcards;
+          data.flashcards = data.flashcards.filter((card) => card.id !== remove.dataset.deleteCard);
+          if (!saveData()) { data.flashcards = previous; return; }
+          render();
+          showToast("Flashcard deleted.");
+        }
+      });
+
+      $("#session-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const minutes = Number($("#session-minutes").value);
+        const date = $("#session-date").value;
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440 || !dateFromISO(date)) return showToast("Enter a valid date and a study duration from 1 to 1,440 minutes.");
+        const session = { id: makeId(), date, minutes, createdAt: Date.now() };
+        data.sessions = [...data.sessions, session];
+        if (!saveData()) { data.sessions.pop(); return; }
+        closeDialog($("#session-dialog"));
+        render();
+        showToast(`${minutes} minutes of study time logged.`);
+      });
+
+      $("#question-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const topic = $("#question-topic").value.trim();
+        const year = Number($("#question-year").value);
+        if (!topic || !Number.isInteger(year) || year < 1900 || year > 2200) return showToast("Enter a question and a valid exam year.");
+        const question = {
+          id: makeId(), topic, subject: $("#question-subject").value.trim(), year,
+          tags: $("#question-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12),
+          createdAt: Date.now()
+        };
+        data.questions = [...data.questions, question];
+        if (!saveData()) { data.questions.pop(); return; }
+        $("#question-form").reset();
+        $("#question-year").value = String(new Date().getFullYear());
+        render();
+        showToast("Question added to your paper library.");
+      });
+      $("#question-table-body").addEventListener("click", (event) => {
+        const remove = event.target.closest("[data-delete-question]");
+        if (!remove) return;
+        const prior = data.questions;
+        data.questions = data.questions.filter((question) => question.id !== remove.dataset.deleteQuestion);
+        if (!saveData()) { data.questions = prior; return; }
+        render();
+        showToast("Past-paper entry deleted.");
+      });
+
+      $("#export-button").addEventListener("click", exportBackup);
+      $("#settings-export").addEventListener("click", exportBackup);
+      $("#settings-import").addEventListener("click", () => $("#import-file").click());
+      $("#import-file").addEventListener("change", async (event) => {
+        const [file] = event.target.files || [];
+        if (!file) return;
+        try {
+          const imported = JSON.parse(await file.text());
+          if (!validImport(imported)) throw new Error("This file does not contain a valid Studyspace backup.");
+          if (!window.confirm("Restoring a backup will replace the study data currently saved in this browser. Continue?")) return;
+          const previous = data;
+          if (data.timer?.running) finalizeRunningTimer(data.timer);
+          data = {
+            ...emptyData(), ...imported,
+            tasks: imported.tasks,
+            sessions: Array.isArray(imported.sessions) ? imported.sessions : (Array.isArray(imported.logs) ? imported.logs : []),
+            logs: Array.isArray(imported.logs) ? imported.logs : (Array.isArray(imported.sessions) ? imported.sessions : []),
+            questions: Array.isArray(imported.questions) ? imported.questions : [],
+            modules: Array.isArray(imported.modules) ? imported.modules : [],
+            flashcards: Array.isArray(imported.flashcards) ? imported.flashcards : [],
+            timer: imported.timer && typeof imported.timer === "object" ? { ...imported.timer, running: false, paused: Boolean(imported.timer.running || imported.timer.paused), startedAt: undefined } : null
+          };
+          if (!saveData()) { data = previous; return; }
+          clearInterval(timerInterval);
+          timerInterval = null;
+          render();
+          showToast("Backup restored successfully.");
+        } catch (error) {
+          console.error("Unable to restore backup:", error);
+          showToast(error instanceof SyntaxError ? "That file isn't valid JSON." : error.message || "Couldn't restore this backup.");
+        } finally {
+          event.target.value = "";
+        }
+      });
+
+      setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+      $("#question-year").value = String(new Date().getFullYear());
+      const initialView = location.hash.slice(1);
+      render();
+      navigate(["dashboard", "predictor", "schedule", "modules", "flashcards", "settings"].includes(initialView) ? initialView : "dashboard");
+    })();
+  </script>
+</body>
+</html>
