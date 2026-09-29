@@ -15,7 +15,44 @@
       const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[character]);
-      const emptyData = () => ({ version: 1, tasks: [], sessions: [], questions: [], modules: [], logs: [], flashcards: [], timer: null });
+      const emptyData = () => ({
+        version: 2, tasks: [], sessions: [], questions: [], modules: [], logs: [], flashcards: [], timer: null,
+        viewMode: "list", subjectColors: {}, targetExam: null, notes: "", energyLogs: [], preferences: {}, ambientTrack: "rain"
+      });
+      function normalizePlannerData(value, pauseTimer = true) {
+        const record = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+        const rawTasks = Array.isArray(record.tasks) ? record.tasks : [];
+        return {
+          ...emptyData(), ...record,
+          version: 2,
+          tasks: rawTasks.filter((task) => task && typeof task === "object" && !Array.isArray(task)).map((task) => {
+            const status = ["todo", "in_progress", "done"].includes(task.status) ? task.status : task.done ? "done" : "todo";
+            return {
+              ...task, status, done: status === "done",
+              subtasks: Array.isArray(task.subtasks) ? task.subtasks.filter((item) => item && typeof item === "object").slice(0, 30).map((item) => ({
+                id: typeof item.id === "string" ? item.id : makeId(),
+                text: typeof item.text === "string" ? item.text.slice(0, 180) : "",
+                done: Boolean(item.done)
+              })).filter((item) => item.text) : []
+            };
+          }),
+          sessions: Array.isArray(record.sessions) ? record.sessions : (Array.isArray(record.logs) ? record.logs : []),
+          logs: Array.isArray(record.logs) ? record.logs : (Array.isArray(record.sessions) ? record.sessions : []),
+          questions: Array.isArray(record.questions) ? record.questions : [],
+          modules: Array.isArray(record.modules) ? record.modules : [],
+          flashcards: Array.isArray(record.flashcards) ? record.flashcards : [],
+          timer: record.timer && typeof record.timer === "object"
+            ? { ...record.timer, ...(pauseTimer && record.timer.running ? { running: false, paused: true, startedAt: undefined } : {}) } : null,
+          viewMode: record.viewMode === "kanban" ? "kanban" : "list",
+          subjectColors: record.subjectColors && typeof record.subjectColors === "object" && !Array.isArray(record.subjectColors) ? record.subjectColors : {},
+          targetExam: record.targetExam && typeof record.targetExam === "object" && dateFromISO(record.targetExam.date)
+            ? { date: record.targetExam.date, label: typeof record.targetExam.label === "string" ? record.targetExam.label.slice(0, 60) : "" } : null,
+          notes: typeof record.notes === "string" ? record.notes.slice(0, 12000) : "",
+          energyLogs: Array.isArray(record.energyLogs) ? record.energyLogs.filter((entry) => entry && typeof entry.date === "string" && ["high", "medium", "low"].includes(entry.level)) : [],
+          preferences: record.preferences && typeof record.preferences === "object" && !Array.isArray(record.preferences) ? record.preferences : {},
+          ambientTrack: ["rain", "cafe", "lofi"].includes(record.ambientTrack) ? record.ambientTrack : "rain"
+        };
+      }
       let toastTimeout;
       let currentFilter = "active";
 
@@ -25,16 +62,7 @@
           if (!stored) return emptyData();
           const parsed = JSON.parse(stored);
           if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Saved study data must be a JSON object.");
-          return {
-            ...emptyData(), ...parsed,
-            tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-            sessions: Array.isArray(parsed.sessions) ? parsed.sessions : (Array.isArray(parsed.logs) ? parsed.logs : []),
-            logs: Array.isArray(parsed.logs) ? parsed.logs : (Array.isArray(parsed.sessions) ? parsed.sessions : []),
-            questions: Array.isArray(parsed.questions) ? parsed.questions : [],
-            modules: Array.isArray(parsed.modules) ? parsed.modules : [],
-            flashcards: Array.isArray(parsed.flashcards) ? parsed.flashcards : [],
-            timer: parsed.timer && typeof parsed.timer === "object" ? parsed.timer : null
-          };
+          return normalizePlannerData(parsed, false);
         } catch (error) {
           console.error("Unable to load local study data:", error);
           showToast("Saved data could not be read. Check this browser's storage.");
@@ -52,6 +80,9 @@
       let cloudSyncQueue = Promise.resolve();
       let authMode = "signin";
       let authSessionInitialized = false;
+      let scratchSaveTimer = null;
+      let ambientState = null;
+      let renderedExamTarget = null;
 
       function setCloudStatus(message, tone = "") {
         const status = $("#cloud-status");
@@ -133,21 +164,13 @@
       }
 
       function hasStudyData(value) {
-        return ["tasks", "sessions", "questions", "modules", "logs", "flashcards"].some((key) => Array.isArray(value[key]) && value[key].length > 0);
+        return ["tasks", "sessions", "questions", "modules", "logs", "flashcards", "energyLogs"].some((key) => Array.isArray(value[key]) && value[key].length > 0)
+          || Boolean(value.timer || value.notes || value.targetExam || Object.keys(value.subjectColors || {}).length || value.viewMode === "kanban" || Object.keys(value.preferences || {}).length || value.ambientTrack !== "rain");
       }
 
       function normalizeCloudData(value) {
         if (!validImport(value)) throw new Error("The saved cloud record has an unsupported data format.");
-        return {
-          ...emptyData(), ...value,
-          tasks: value.tasks,
-          sessions: Array.isArray(value.sessions) ? value.sessions : (Array.isArray(value.logs) ? value.logs : []),
-          logs: Array.isArray(value.logs) ? value.logs : (Array.isArray(value.sessions) ? value.sessions : []),
-          questions: Array.isArray(value.questions) ? value.questions : [],
-          modules: Array.isArray(value.modules) ? value.modules : [],
-          flashcards: Array.isArray(value.flashcards) ? value.flashcards : [],
-          timer: value.timer && typeof value.timer === "object" ? { ...value.timer, running: false, paused: Boolean(value.timer.running || value.timer.paused), startedAt: undefined } : null
-        };
+        return normalizePlannerData(value);
       }
 
       async function loadDataFromCloud(userId) {
@@ -187,6 +210,7 @@
               data = previousData;
               throw new Error("Cloud data could not be saved to this browser's storage.");
             }
+            setTheme(data.preferences.theme || localStorage.getItem(THEME_KEY) || "light");
             cloudSyncAllowed = true;
             render();
             setCloudStatus("Your study data is synced with the cloud.", "success");
@@ -236,8 +260,11 @@
         try {
           $("#auth-status").textContent = "Checking session…";
           supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-          supabaseClient.auth.onAuthStateChange((_event, session) => {
-            queueMicrotask(() => { void applyAuthSession(session); });
+          supabaseClient.auth.onAuthStateChange((event, session) => {
+            queueMicrotask(() => {
+              if (event === "PASSWORD_RECOVERY") openAuthDialog("recovery", session?.user?.email || "");
+              void applyAuthSession(session);
+            });
           });
           const { data: sessionData, error } = await supabaseClient.auth.getSession();
           if (error) throw error;
@@ -267,6 +294,26 @@
         await applyAuthSession(result.session);
         showToast("Account created.");
         return true;
+      }
+
+      async function resetPassword(email) {
+        if (!supabaseClient) throw new Error("Supabase is not initialized.");
+        const normalizedEmail = String(email || "").trim();
+        if (!normalizedEmail) throw new Error("Enter your email address first.");
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: `${window.location.origin}${window.location.pathname}`
+        });
+        if (error) throw error;
+        setAuthMessage("If an account exists for that email, a password reset link has been sent.", "success");
+      }
+
+      async function updateRecoveredPassword(password) {
+        if (!supabaseClient) throw new Error("Supabase is not initialized.");
+        const { error } = await supabaseClient.auth.updateUser({ password });
+        if (error) throw error;
+        closeDialog($("#auth-dialog"));
+        setAuthMessage("Your password has been updated.", "success");
+        showToast("Password updated successfully.");
       }
 
       async function loginUser(email, password) {
@@ -335,7 +382,7 @@
       }
 
       function taskIsHighYield(task) {
-        return task.priority === "high" || (task.moduleId && moduleLevel(data.modules.find((module) => module.id === task.moduleId)) === "high");
+        return taskStatus(task) !== "done" && (task.priority === "high" || (task.moduleId && moduleLevel(data.modules.find((module) => module.id === task.moduleId)) === "high"));
       }
 
       const TIMER_LENGTHS = { focus: 25 * 60, break: 5 * 60 };
@@ -362,7 +409,7 @@
         const select = $("#timer-link");
         const selected = data.timer?.link || select.value;
         const options = ['<option value="">No goal or module</option>'];
-        const tasks = data.tasks.filter((task) => !task.done);
+        const tasks = data.tasks.filter((task) => taskStatus(task) !== "done");
         if (tasks.length) options.push(`<optgroup label="Active goals">${tasks.map((task) => `<option value="task:${escapeHTML(task.id)}">${escapeHTML(task.title)}</option>`).join("")}</optgroup>`);
         if (data.modules.length) options.push(`<optgroup label="Modules">${data.modules.map((module) => `<option value="module:${escapeHTML(module.id)}">${escapeHTML(module.subject)} · ${escapeHTML(module.name)}</option>`).join("")}</optgroup>`);
         select.innerHTML = options.join("");
@@ -535,17 +582,64 @@
         const now = new Date();
         $("#today-label").textContent = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }).toUpperCase();
         $("#page-date").textContent = now.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        renderExamCountdown(now);
+      }
+
+      function renderExamCountdown(now = new Date()) {
+        const target = data.targetExam;
+        const title = target?.label || "Your next exam";
+        $("#exam-countdown-title").textContent = title;
+        const signature = JSON.stringify(target);
+        if (signature !== renderedExamTarget) {
+          if (document.activeElement !== $("#exam-title-input")) $("#exam-title-input").value = target?.label || "";
+          if (document.activeElement !== $("#exam-date-input")) $("#exam-date-input").value = target?.date || "";
+          renderedExamTarget = signature;
+        }
+        if (!target?.date || !dateFromISO(target.date)) {
+          $("#exam-countdown-description").textContent = "Set a target date to keep the finish line in view.";
+          $("#exam-countdown-top").textContent = "Set a date";
+          return;
+        }
+        const examDay = dateFromISO(target.date);
+        const examDateOnly = new Date(examDay);
+        examDateOnly.setHours(0, 0, 0, 0);
+        const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (examDateOnly < todayDateOnly) {
+          $("#exam-countdown-description").textContent = `That target date has passed · ${friendlyDue(target.date)}.`;
+          $("#exam-countdown-top").textContent = "Date passed";
+          return;
+        }
+        examDay.setHours(9, 0, 0, 0);
+        const minutesLeft = Math.max(0, Math.ceil((examDay.getTime() - now.getTime()) / 60000));
+        const days = Math.floor(minutesLeft / 1440);
+        const hours = Math.floor(minutesLeft % 1440 / 60);
+        const minutes = minutesLeft % 60;
+        const compact = minutesLeft === 0 ? "Exam day" : `${days}d ${hours}h ${minutes}m`;
+        $("#exam-countdown-top").textContent = compact;
+        $("#exam-countdown-description").textContent = minutesLeft === 0
+          ? `Today · ${new Date(`${target.date}T09:00:00`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} target`
+          : `${days} days, ${hours} hours and ${minutes} minutes remaining.`;
+      }
+
+      function getUniqueSessions() {
+        const seen = new Set();
+        return data.sessions.concat(data.logs).filter((session) => {
+          const key = session.id || JSON.stringify(session);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
 
       function renderSummary() {
         const todayTasks = data.tasks.filter((task) => task.due === todayISO());
-        const completed = todayTasks.filter((task) => task.done).length;
+        const completed = todayTasks.filter((task) => taskStatus(task) === "done").length;
         const percent = todayTasks.length ? Math.round(completed / todayTasks.length * 100) : 0;
         $("#today-percent").textContent = String(percent);
         $("#today-progress-bar").style.width = `${percent}%`;
         $("#today-progress-track").setAttribute("aria-valuenow", String(percent));
         $("#today-progress-caption").textContent = `${completed} of ${todayTasks.length} ${todayTasks.length === 1 ? "goal" : "goals"} complete`;
-        $("#high-yield-remaining").textContent = String(data.tasks.filter((task) => !task.done && taskIsHighYield(task)).length);
+        $("#high-yield-remaining").textContent = String(data.tasks.filter(taskIsHighYield).length);
         const activeDates = new Set(data.logs.concat(data.sessions).map((session) => session.date).filter((date) => dateFromISO(date)));
         const cursor = dateFromISO(todayISO());
         if (!activeDates.has(todayISO())) cursor.setDate(cursor.getDate() - 1);
@@ -590,27 +684,55 @@
       function renderTasks() {
         const query = $("#task-search").value.trim().toLocaleLowerCase();
         const filtered = data.tasks.filter((task) => {
-          if (currentFilter === "active" && task.done) return false;
-          if (currentFilter === "done" && !task.done) return false;
+          const status = taskStatus(task);
+          if (currentFilter === "active" && status === "done") return false;
+          if (currentFilter === "done" && status !== "done") return false;
           const text = `${task.title || ""} ${task.description || ""} ${task.subject || ""}`.toLocaleLowerCase();
           return !query || text.includes(query);
-        }).sort((a, b) => Number(a.done) - Number(b.done) || (a.due || "9999").localeCompare(b.due || "9999") || priorityRank(a.priority) - priorityRank(b.priority));
+        }).sort((a, b) => Number(taskStatus(a) === "done") - Number(taskStatus(b) === "done") || (a.due || "9999").localeCompare(b.due || "9999") || priorityRank(a.priority) - priorityRank(b.priority));
         $("#task-count").textContent = `${data.tasks.length} ${data.tasks.length === 1 ? "goal" : "goals"}`;
-        const list = $("#task-list");
-        list.innerHTML = filtered.map((task) => {
-          const priority = ["high", "medium", "low"].includes(task.priority) ? task.priority : "medium";
-          return `<article class="task-row ${task.done ? "task-done" : ""}">
-            <input class="task-checkbox" type="checkbox" data-task-toggle="${escapeHTML(task.id)}" aria-label="Mark ${escapeHTML(task.title)} complete" ${task.done ? "checked" : ""}>
-            <div class="task-copy"><p class="task-title">${escapeHTML(task.title || "Untitled goal")}</p>${task.description ? `<p class="task-description">${escapeHTML(task.description)}</p>` : ""}<div class="task-meta"><span>${escapeHTML(friendlyDue(task.due))}</span><span>·</span><span class="priority-badge priority-${priority}">${priority}</span>${task.moduleId ? `<span>·</span><span>${escapeHTML(data.modules.find((module) => module.id === task.moduleId)?.name || "Linked module")}</span>` : ""}</div></div>
-            <div class="task-actions"><button class="task-action" type="button" data-edit-task="${escapeHTML(task.id)}" aria-label="Edit ${escapeHTML(task.title)}" title="Edit goal">✎</button><button class="task-action" type="button" data-delete-task="${escapeHTML(task.id)}" aria-label="Delete ${escapeHTML(task.title)}" title="Delete goal">×</button></div>
-          </article>`;
+        $("#task-list").innerHTML = filtered.map((task) => renderTaskMarkup(task, false)).join("");
+        $("#task-kanban").innerHTML = ["todo", "in_progress", "done"].map((status) => {
+          const cards = filtered.filter((task) => taskStatus(task) === status);
+          const label = status === "todo" ? "To do" : status === "in_progress" ? "In progress" : "Done";
+          return `<section class="kanban-column" data-kanban-column="${status}" aria-label="${label} tasks">
+            <div class="kanban-column-head"><strong>${label}</strong><span>${cards.length}</span></div>
+            <div class="kanban-cards">${cards.map((task) => renderTaskMarkup(task, true)).join("") || `<span class="subtask-progress">Drop a goal here</span>`}</div>
+          </section>`;
         }).join("");
+        const boardMode = data.viewMode === "kanban";
+        $("#task-list-view").hidden = boardMode;
+        $("#task-kanban-view").hidden = !boardMode;
+        $$("[data-task-view]").forEach((button) => button.classList.toggle("active", button.dataset.taskView === data.viewMode));
         const empty = filtered.length === 0;
         $("#task-empty").hidden = !empty;
         $("#task-empty-title").textContent = query ? "No matching goals." : currentFilter === "done" ? "Nothing completed yet." : currentFilter === "active" && data.tasks.length ? "You're all caught up." : "A fresh page.";
         $("#task-empty-copy").textContent = query ? "Try another search, or clear your search to see all goals." : currentFilter === "active" && data.tasks.length ? "Add another goal whenever you're ready." : "Add a goal to begin shaping your study day.";
-        $("#clear-completed").hidden = !data.tasks.some((task) => task.done);
-        $("#task-footer-copy").textContent = `${data.tasks.filter((task) => task.done).length} complete · ${data.tasks.filter((task) => !task.done).length} remaining`;
+        $("#clear-completed").hidden = !data.tasks.some((task) => taskStatus(task) === "done");
+        $("#task-footer-copy").textContent = `${data.tasks.filter((task) => taskStatus(task) === "done").length} complete · ${data.tasks.filter((task) => taskStatus(task) !== "done").length} remaining`;
+      }
+
+      function taskStatus(task) {
+        if (task?.done || task?.status === "done") return "done";
+        return task?.status === "in_progress" ? "in_progress" : "todo";
+      }
+
+      function renderTaskMarkup(task, board) {
+        const status = taskStatus(task);
+        const priority = ["high", "medium", "low"].includes(task.priority) ? task.priority : "medium";
+        const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+        const completedSubtasks = subtasks.filter((item) => item.done).length;
+        const savedColor = data.subjectColors[String(task.subject || "").toLocaleLowerCase()];
+        const color = /^#[0-9a-f]{6}$/i.test(task.subjectColor || "") ? task.subjectColor
+          : (/^#[0-9a-f]{6}$/i.test(savedColor || "") ? savedColor : "#718096");
+        return `<article class="${board ? "kanban-card" : "task-row"} ${status === "done" ? "task-done" : ""}" ${board ? `draggable="true" data-task-card="${escapeHTML(task.id)}"` : ""}>
+          <input class="task-checkbox" type="checkbox" data-task-toggle="${escapeHTML(task.id)}" aria-label="Mark ${escapeHTML(task.title)} complete" ${status === "done" ? "checked" : ""}>
+          <div class="task-copy"><p class="task-title">${escapeHTML(task.title || "Untitled goal")}</p>${task.description ? `<p class="task-description">${escapeHTML(task.description)}</p>` : ""}
+            <div class="task-meta"><span>${escapeHTML(friendlyDue(task.due))}</span><span>·</span><span class="priority-badge priority-${priority}">${priority}</span>${task.subject ? `<span class="subject-tag" style="--subject-color:${escapeHTML(color)}"><i class="subject-dot"></i>${escapeHTML(task.subject)}</span>` : ""}${task.moduleId ? `<span>${escapeHTML(data.modules.find((module) => module.id === task.moduleId)?.name || "Linked module")}</span>` : ""}</div>
+            ${subtasks.length ? `<div class="subtask-list">${subtasks.map((item) => `<label class="subtask-item ${item.done ? "done" : ""}"><input type="checkbox" data-subtask-task="${escapeHTML(task.id)}" data-subtask-id="${escapeHTML(item.id)}" ${item.done ? "checked" : ""}><span>${escapeHTML(item.text)}</span></label>`).join("")}<span class="subtask-progress">${completedSubtasks} / ${subtasks.length} subtasks</span></div>` : ""}
+          </div>
+          <div class="task-actions">${board ? `<select class="field-input" data-task-status="${escapeHTML(task.id)}" aria-label="Move ${escapeHTML(task.title)}" style="height:27px;max-width:100px;padding:3px;font-size:8px"><option value="todo" ${status === "todo" ? "selected" : ""}>To do</option><option value="in_progress" ${status === "in_progress" ? "selected" : ""}>In progress</option><option value="done" ${status === "done" ? "selected" : ""}>Done</option></select>` : ""}<button class="task-action" type="button" data-edit-task="${escapeHTML(task.id)}" aria-label="Edit ${escapeHTML(task.title)}" title="Edit goal">✎</button><button class="task-action" type="button" data-delete-task="${escapeHTML(task.id)}" aria-label="Delete ${escapeHTML(task.title)}" title="Delete goal">×</button></div>
+        </article>`;
       }
 
       function renderModules() {
@@ -619,7 +741,7 @@
         const cardHTML = (module) => {
           const level = moduleLevel(module);
           const weight = module.weight !== "" && module.weight != null && Number.isFinite(Number(module.weight)) ? `${Number(module.weight)}% exam weight` : "Scored from past-paper patterns";
-          const linkedTasks = data.tasks.filter((task) => task.moduleId === module.id && !task.done).length;
+          const linkedTasks = data.tasks.filter((task) => task.moduleId === module.id && taskStatus(task) !== "done").length;
           return `<article class="module-card"><div class="module-card-head"><span class="yield-badge yield-${level}">${level} yield</span><span class="module-weight">${escapeHTML(weight)}</span></div><h3>${escapeHTML(module.name)}</h3><p>${escapeHTML(module.subject || "General")}</p><div class="module-card-meta"><span>${linkedTasks} open ${linkedTasks === 1 ? "goal" : "goals"}</span>${module.examDate ? `<span>Exam ${escapeHTML(friendlyDue(module.examDate))}</span>` : ""}${module.due ? `<span>Study by ${escapeHTML(friendlyDue(module.due))}</span>` : ""}</div><div class="module-card-actions"><button class="task-action" type="button" data-edit-module="${escapeHTML(module.id)}" aria-label="Edit ${escapeHTML(module.name)}" title="Edit module">✎</button><button class="task-action" type="button" data-delete-module="${escapeHTML(module.id)}" aria-label="Delete ${escapeHTML(module.name)}" title="Delete module">×</button></div></article>`;
         };
         $("#module-list").innerHTML = sorted.map(cardHTML).join("");
@@ -631,7 +753,7 @@
 
       function renderSchedule() {
         const entries = [
-          ...data.tasks.filter((task) => !task.done && dateFromISO(task.due)).map((task) => ({
+          ...data.tasks.filter((task) => taskStatus(task) !== "done" && dateFromISO(task.due)).map((task) => ({
             id: task.id, type: "task", title: task.title, date: task.due,
             priority: priorityRank(task.priority), yield: task.moduleId ? ({ high: 0, medium: 1, low: 2 })[moduleLevel(data.modules.find((module) => module.id === task.moduleId))] : 2,
             badge: task.moduleId ? `${data.modules.find((module) => module.id === task.moduleId)?.name || "Module"} · ${moduleLevel(data.modules.find((module) => module.id === task.moduleId))} yield` : `${task.priority || "medium"} priority`,
@@ -714,11 +836,135 @@
         $("#storage-summary").textContent = `${data.tasks.length} goals · ${data.modules.length} modules · ${data.flashcards.length} flashcards saved in this browser.`;
       }
 
+      function renderProductivityWidgets() {
+        if (document.activeElement !== $("#scratch-notes")) $("#scratch-notes").value = data.notes;
+        $("#scratch-character-count").textContent = `${data.notes.length} / 12000`;
+        if (document.activeElement !== $("#ambient-track")) $("#ambient-track").value = data.ambientTrack;
+        const todayEnergy = data.energyLogs.find((entry) => entry.date === todayISO());
+        $("#energy-today-label").textContent = todayEnergy ? `${todayEnergy.level.toUpperCase()} ENERGY` : "NOT LOGGED";
+        $$("[data-energy]").forEach((button) => button.classList.toggle("active", button.dataset.energy === todayEnergy?.level));
+        const secondsByDate = new Map();
+        getUniqueSessions().forEach((session) => {
+          if (!dateFromISO(session.date)) return;
+          const seconds = session.seconds != null && Number.isFinite(Number(session.seconds)) ? Number(session.seconds) : Math.max(0, Number(session.minutes) || 0) * 60;
+          secondsByDate.set(session.date, (secondsByDate.get(session.date) || 0) + seconds);
+        });
+        const today = dateFromISO(todayISO());
+        const cells = [];
+        for (let offset = 34; offset >= 0; offset -= 1) {
+          const day = new Date(today);
+          day.setDate(day.getDate() - offset);
+          const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+          const seconds = secondsByDate.get(date) || 0;
+          const level = seconds === 0 ? 0 : seconds < 1800 ? 1 : seconds < 7200 ? 2 : seconds < 14400 ? 3 : 4;
+          cells.push(`<i class="heatmap-cell" data-level="${level}" title="${escapeHTML(day.toLocaleDateString(undefined, { month: "short", day: "numeric" }))} · ${(seconds / 3600).toFixed(1)}h focused"></i>`);
+        }
+        $("#activity-heatmap").innerHTML = cells.join("");
+        const streak = Number($("#study-streak").textContent) || 0;
+        $("#heatmap-streak").textContent = `${streak} DAY STREAK`;
+      }
+
+      function stopAmbientSound() {
+        if (!ambientState) return;
+        clearInterval(ambientState.interval);
+        ambientState.nodes.forEach((node) => { try { node.stop(); } catch (_) {} });
+        const context = ambientState.context;
+        ambientState = null;
+        $("#ambient-status").textContent = "OFF";
+        $("#ambient-toggle").textContent = "Play";
+        $("#ambient-toggle").setAttribute("aria-pressed", "false");
+        void context.close().catch((error) => console.info("Could not close ambient audio:", error));
+      }
+
+      async function toggleAmbientSound() {
+        if (ambientState) return stopAmbientSound();
+        const track = $("#ambient-track").value;
+        const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextConstructor) return showToast("Ambient audio is not supported by this browser.");
+        let context = null;
+        try {
+          context = new AudioContextConstructor();
+          await context.resume();
+          const master = context.createGain();
+          master.gain.value = track === "lofi" ? 0.035 : 0.075;
+          master.connect(context.destination);
+          const nodes = [];
+          let interval = null;
+          if (track === "lofi") {
+            const notes = [130.81, 164.81, 196, 220, 164.81, 146.83, 174.61, 220];
+            let index = 0;
+            const playNote = () => {
+              const oscillator = context.createOscillator();
+              const envelope = context.createGain();
+              oscillator.type = "triangle";
+              oscillator.frequency.value = notes[index++ % notes.length];
+              envelope.gain.setValueAtTime(0, context.currentTime);
+              envelope.gain.linearRampToValueAtTime(0.32, context.currentTime + 0.08);
+              envelope.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 1.35);
+              oscillator.connect(envelope);
+              envelope.connect(master);
+              nodes.push(oscillator);
+              oscillator.onended = () => {
+                const nodeIndex = nodes.indexOf(oscillator);
+                if (nodeIndex >= 0) nodes.splice(nodeIndex, 1);
+              };
+              oscillator.start();
+              oscillator.stop(context.currentTime + 1.4);
+            };
+            playNote();
+            interval = setInterval(playNote, 1050);
+          } else {
+            const buffer = context.createBuffer(1, context.sampleRate * 3, context.sampleRate);
+            const channel = buffer.getChannelData(0);
+            for (let index = 0; index < channel.length; index += 1) channel[index] = (Math.random() * 2 - 1) * 0.32;
+            const source = context.createBufferSource();
+            const filter = context.createBiquadFilter();
+            const texture = context.createGain();
+            source.buffer = buffer;
+            source.loop = true;
+            filter.type = track === "rain" ? "lowpass" : "bandpass";
+            filter.frequency.value = track === "rain" ? 1150 : 780;
+            filter.Q.value = track === "rain" ? 0.4 : 0.7;
+            texture.gain.value = track === "rain" ? 0.52 : 0.34;
+            source.connect(filter);
+            filter.connect(texture);
+            texture.connect(master);
+            source.start();
+            nodes.push(source);
+          }
+          ambientState = { context, nodes, interval };
+          $("#ambient-status").textContent = track === "rain" ? "RAIN ON" : track === "cafe" ? "CAFÉ ON" : "LO-FI ON";
+          $("#ambient-toggle").textContent = "Stop";
+          $("#ambient-toggle").setAttribute("aria-pressed", "true");
+        } catch (error) {
+          console.error("Unable to start ambient sound:", error);
+          if (context && context.state !== "closed") void context.close().catch((closeError) => console.info("Could not close ambient audio:", closeError));
+          showToast("Couldn't start ambient audio. Check your browser's audio settings.");
+        }
+      }
+
+      function openNotesDrawer() {
+        $("#scratch-drawer").classList.add("open");
+        $("#scratch-overlay").classList.add("open");
+        $("#scratch-drawer").setAttribute("aria-hidden", "false");
+        $("#scratch-overlay").setAttribute("aria-hidden", "false");
+        $("#scratch-notes").focus();
+      }
+
+      function closeNotesDrawer() {
+        $("#scratch-drawer").classList.remove("open");
+        $("#scratch-overlay").classList.remove("open");
+        $("#scratch-drawer").setAttribute("aria-hidden", "true");
+        $("#scratch-overlay").setAttribute("aria-hidden", "true");
+        $("#notes-open").focus();
+      }
+
       function render() {
         renderHeader();
         renderSummary();
         renderStudyAnalytics();
         renderTasks();
+        renderProductivityWidgets();
         renderPredictor();
         renderModules();
         renderSchedule();
@@ -741,7 +987,11 @@
         $("#theme-setting-label").textContent = dark ? "Dark appearance" : "Light appearance";
         $("meta[name='theme-color']").content = dark ? "#11131a" : "#f6f8fc";
         if (persist) {
-          try { localStorage.setItem(THEME_KEY, dark ? "dark" : "light"); }
+          try {
+            localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+            data.preferences = { ...data.preferences, theme: dark ? "dark" : "light" };
+            saveData();
+          }
           catch (error) { console.error("Could not save appearance preference:", error); showToast("Couldn't save the theme preference."); }
         }
       }
@@ -767,6 +1017,12 @@
         updateTimerLinkOptions();
         $("#task-module").innerHTML = `<option value="">No module</option>${data.modules.map((module) => `<option value="${escapeHTML(module.id)}">${escapeHTML(module.subject)} · ${escapeHTML(module.name)}</option>`).join("")}`;
         $("#task-module").value = task?.moduleId || "";
+        $("#task-subject").value = task?.subject || "";
+        const subjectKey = String(task?.subject || "").toLocaleLowerCase();
+        $("#task-subject-color").value = /^#[0-9a-f]{6}$/i.test(task?.subjectColor || "")
+          ? task.subjectColor : (/^#[0-9a-f]{6}$/i.test(data.subjectColors[subjectKey] || "") ? data.subjectColors[subjectKey] : "#718096");
+        $("#task-status").value = taskStatus(task || {});
+        $("#task-subtasks").value = (Array.isArray(task?.subtasks) ? task.subtasks : []).map((item) => item.text).join("\n");
         if (typeof $("#task-dialog").showModal === "function") $("#task-dialog").showModal();
         else $("#task-dialog").setAttribute("open", "");
         $("#task-title-input").focus();
@@ -800,14 +1056,21 @@
       function validImport(value) {
         const record = (item) => item !== null && typeof item === "object" && !Array.isArray(item);
         if (!record(value) || !Array.isArray(value.tasks)) return false;
-        return value.tasks.every((task) => record(task) && typeof task.title === "string" && typeof task.id === "string")
+        return value.tasks.every((task) => record(task) && typeof task.title === "string" && typeof task.id === "string"
+            && (task.status == null || ["todo", "in_progress", "done"].includes(task.status))
+            && (task.subtasks == null || (Array.isArray(task.subtasks) && task.subtasks.every((item) => record(item) && typeof item.text === "string"))))
           && (value.questions == null || (Array.isArray(value.questions) && value.questions.every((question) =>
             record(question) && typeof question.topic === "string" && Number.isInteger(Number(question.year)))))
           && (value.modules == null || (Array.isArray(value.modules) && value.modules.every((module) => record(module) && typeof module.id === "string" && typeof module.name === "string")))
           && (value.logs == null || (Array.isArray(value.logs) && value.logs.every((session) => record(session) && typeof session.date === "string")))
           && (value.sessions == null || (Array.isArray(value.sessions) && value.sessions.every((session) => record(session) && typeof session.date === "string")))
           && (value.flashcards == null || (Array.isArray(value.flashcards) && value.flashcards.every((card) => record(card) && typeof card.id === "string" && typeof card.front === "string" && typeof card.back === "string")))
-          && (value.timer == null || (record(value.timer) && ["focus", "break"].includes(value.timer.mode) && Number.isFinite(Number(value.timer.remaining)) && Number(value.timer.remaining) >= 0 && Number(value.timer.remaining) <= TIMER_LENGTHS[value.timer.mode]));
+          && (value.timer == null || (record(value.timer) && ["focus", "break"].includes(value.timer.mode) && Number.isFinite(Number(value.timer.remaining)) && Number(value.timer.remaining) >= 0 && Number(value.timer.remaining) <= TIMER_LENGTHS[value.timer.mode]))
+          && (value.viewMode == null || ["list", "kanban"].includes(value.viewMode))
+          && (value.targetExam == null || (record(value.targetExam) && dateFromISO(value.targetExam.date) && (value.targetExam.label == null || typeof value.targetExam.label === "string")))
+          && (value.notes == null || typeof value.notes === "string")
+          && (value.subjectColors == null || record(value.subjectColors))
+          && (value.energyLogs == null || (Array.isArray(value.energyLogs) && value.energyLogs.every((entry) => record(entry) && typeof entry.date === "string" && ["high", "medium", "low"].includes(entry.level))));
       }
 
       $("#theme-toggle").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
@@ -836,6 +1099,62 @@
         persistTimerState();
         renderTimer();
       });
+      $$("[data-task-view]").forEach((button) => button.addEventListener("click", () => {
+        if (data.viewMode === button.dataset.taskView) return;
+        data.viewMode = button.dataset.taskView;
+        if (saveData()) renderTasks();
+      }));
+      $("#save-exam-target").addEventListener("click", () => {
+        const date = $("#exam-date-input").value;
+        if (date && !dateFromISO(date)) return showToast("Choose a valid exam date.");
+        const previous = data.targetExam;
+        data.targetExam = date ? { date, label: $("#exam-title-input").value.trim().slice(0, 60) } : null;
+        if (!saveData()) { data.targetExam = previous; return; }
+        renderHeader();
+        showToast(date ? "Exam countdown updated." : "Exam countdown cleared.");
+      });
+      $$("[data-energy]").forEach((button) => button.addEventListener("click", () => {
+        const previous = data.energyLogs;
+        data.energyLogs = [...data.energyLogs.filter((entry) => entry.date !== todayISO()), { date: todayISO(), level: button.dataset.energy, updatedAt: new Date().toISOString() }];
+        if (!saveData()) { data.energyLogs = previous; return; }
+        renderProductivityWidgets();
+        showToast("Energy check-in saved.");
+      }));
+      $("#ambient-track").addEventListener("change", () => {
+        if (ambientState) stopAmbientSound();
+        data.ambientTrack = $("#ambient-track").value;
+        saveData();
+      });
+      $("#ambient-toggle").addEventListener("click", () => { void toggleAmbientSound(); });
+      $("#notes-open").addEventListener("click", openNotesDrawer);
+      $("#notes-close").addEventListener("click", closeNotesDrawer);
+      $("#scratch-overlay").addEventListener("click", closeNotesDrawer);
+      $("#scratch-notes").addEventListener("input", () => {
+        data.notes = $("#scratch-notes").value;
+        $("#scratch-character-count").textContent = `${data.notes.length} / 12000`;
+        $("#scratch-save-status").textContent = "Saving…";
+        clearTimeout(scratchSaveTimer);
+        scratchSaveTimer = setTimeout(() => {
+          if (saveData()) $("#scratch-save-status").textContent = "Saved on this device";
+        }, 180);
+      });
+      document.addEventListener("keydown", (event) => {
+        const target = event.target;
+        const editing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+        if (event.key === "Escape" && $("#scratch-drawer").classList.contains("open")) {
+          closeNotesDrawer();
+          return;
+        }
+        if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+        if (event.key.toLowerCase() === "n" && !editing) {
+          event.preventDefault();
+          openTaskDialog();
+        } else if (event.shiftKey && event.key.toLowerCase() === "p") {
+          event.preventDefault();
+          data.timer?.running ? pauseTimer() : startTimer();
+        }
+      });
+      window.addEventListener("pagehide", stopAmbientSound);
       if (data.timer?.running) {
         if (timerRemaining() <= 0) tickTimer();
         else timerInterval = setInterval(tickTimer, 1000);
@@ -853,28 +1172,53 @@
         renderTasks();
       }));
       $("#task-search").addEventListener("input", renderTasks);
+      $("#task-subject").addEventListener("change", () => {
+        const color = data.subjectColors[$("#task-subject").value.trim().toLocaleLowerCase()];
+        if (/^#[0-9a-f]{6}$/i.test(color || "")) $("#task-subject-color").value = color;
+      });
 
-      function openAuthDialog(mode) {
+      function openAuthDialog(mode, email = "") {
         authMode = mode;
         $("#auth-form").reset();
-        $("#auth-password").autocomplete = mode === "signup" ? "new-password" : "current-password";
-        $("#auth-dialog-title").textContent = mode === "signup" ? "Create your account" : "Sign in to sync";
-        $("#auth-submit-button").textContent = mode === "signup" ? "Sign up" : "Login";
+        $("#auth-email").value = email;
+        $("#auth-email").readOnly = mode === "recovery";
+        $("#auth-password").autocomplete = mode === "recovery" || mode === "signup" ? "new-password" : "current-password";
+        $("#auth-password").placeholder = mode === "recovery" ? "Choose a new password" : "At least 8 characters";
+        $("#auth-dialog-title").textContent = mode === "signup" ? "Create your account" : mode === "recovery" ? "Set a new password" : "Sign in to sync";
+        $("#auth-submit-button").textContent = mode === "signup" ? "Sign up" : mode === "recovery" ? "Update password" : "Login";
         $("#auth-mode-toggle").textContent = "Need an account? Sign up";
-        $("#auth-mode-toggle").hidden = mode === "signup";
-        $("#auth-config-note").hidden = false;
+        $("#auth-mode-toggle").hidden = mode !== "signin";
+        $("#auth-forgot-password").hidden = mode !== "signin";
+        $("#auth-config-note").hidden = true;
         setAuthMessage("");
         $("#auth-dialog").showModal();
       }
 
       $("#auth-open-button").addEventListener("click", () => openAuthDialog("signin"));
       $("#auth-signup-open-button").addEventListener("click", () => openAuthDialog("signup"));
+      $("#auth-forgot-password").addEventListener("click", async () => {
+        const button = $("#auth-forgot-password");
+        button.disabled = true;
+        setAuthMessage("Sending password reset link…");
+        try {
+          await resetPassword($("#auth-email").value);
+        } catch (error) {
+          console.error("Supabase password reset failed:", error);
+          setAuthMessage(error.message || "Could not send a password reset link.", "error");
+        } finally {
+          button.disabled = false;
+        }
+      });
       $("#auth-mode-toggle").addEventListener("click", () => {
         authMode = authMode === "signin" ? "signup" : "signin";
         $("#auth-dialog-title").textContent = authMode === "signup" ? "Create your account" : "Sign in to sync";
         $("#auth-submit-button").textContent = authMode === "signup" ? "Sign up" : "Login";
         $("#auth-mode-toggle").textContent = authMode === "signup" ? "Already have an account? Sign in" : "Need an account? Sign up";
         $("#auth-password").autocomplete = authMode === "signup" ? "new-password" : "current-password";
+        $("#auth-password").placeholder = "At least 8 characters";
+        $("#auth-email").readOnly = false;
+        $("#auth-forgot-password").hidden = authMode !== "signin";
+        $("#auth-mode-toggle").hidden = false;
         setAuthMessage("");
       });
       $("#auth-form").addEventListener("submit", async (event) => {
@@ -891,6 +1235,7 @@
         setAuthMessage(mode === "signup" ? "Creating your account…" : "Signing you in…");
         try {
           if (mode === "signup") await signUpUser(email, password);
+          else if (mode === "recovery") await updateRecoveredPassword(password);
           else await loginUser(email, password);
         } catch (error) {
           console.error(mode === "signup" ? "Supabase signup failed:" : "Supabase login failed:", error);
@@ -919,30 +1264,91 @@
         const title = $("#task-title-input").value.trim();
         const due = $("#task-due").value;
         if (!title || !dateFromISO(due)) return showToast("Enter a goal title and valid due date.");
+        const status = $("#task-status").value;
+        if (!["todo", "in_progress", "done"].includes(status)) return showToast("Choose a valid board status.");
+        const moduleId = $("#task-module").value;
+        const linkedModule = data.modules.find((module) => module.id === moduleId);
+        const subject = $("#task-subject").value.trim() || linkedModule?.subject || "";
+        const subjectColor = $("#task-subject-color").value;
+        const existingSubtasks = Array.isArray(existing?.subtasks) ? [...existing.subtasks] : [];
+        const subtasks = $("#task-subtasks").value.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 30).map((text) => {
+          const matchIndex = existingSubtasks.findIndex((item) => item.text === text);
+          const match = matchIndex < 0 ? null : existingSubtasks.splice(matchIndex, 1)[0];
+          return { id: match?.id || makeId(), text: text.slice(0, 180), done: Boolean(match?.done) };
+        });
         const task = {
           id: id || makeId(), title, description: $("#task-description").value.trim(),
-          priority: $("#task-priority").value, due, done: existing?.done || false,
-          moduleId: $("#task-module").value, subject: existing?.subject || "",
+          priority: $("#task-priority").value, due, status, done: status === "done",
+          moduleId, subject, subjectColor, subtasks,
           createdAt: existing?.createdAt || Date.now()
         };
         const next = existing ? data.tasks.map((item) => item.id === id ? task : item) : [...data.tasks, task];
         const prior = data.tasks;
+        const previousColors = data.subjectColors;
+        if (subject && /^#[0-9a-f]{6}$/i.test(subjectColor)) data.subjectColors = { ...data.subjectColors, [subject.toLocaleLowerCase()]: subjectColor };
         data.tasks = next;
-        if (!saveData()) { data.tasks = prior; return; }
+        if (!saveData()) { data.tasks = prior; data.subjectColors = previousColors; return; }
         closeDialog($("#task-dialog"));
         render();
         showToast(existing ? "Study goal updated." : "Study goal added.");
       });
 
-      $("#task-list").addEventListener("change", (event) => {
+      $("#task-panel").addEventListener("change", (event) => {
+        const statusSelect = event.target.closest("[data-task-status]");
+        if (statusSelect) {
+          const previous = data.tasks;
+          data.tasks = data.tasks.map((task) => task.id === statusSelect.dataset.taskStatus ? {
+            ...task, status: statusSelect.value, done: statusSelect.value === "done"
+          } : task);
+          if (!saveData()) { data.tasks = previous; return renderTasks(); }
+          return render();
+        }
+        const subtask = event.target.closest("[data-subtask-task]");
+        if (subtask) {
+          const previous = data.tasks;
+          data.tasks = data.tasks.map((task) => task.id === subtask.dataset.subtaskTask ? {
+            ...task, subtasks: task.subtasks.map((item) => item.id === subtask.dataset.subtaskId ? { ...item, done: subtask.checked } : item)
+          } : task);
+          if (!saveData()) { data.tasks = previous; return renderTasks(); }
+          return render();
+        }
         const checkbox = event.target.closest("[data-task-toggle]");
         if (!checkbox) return;
         const prior = data.tasks;
-        data.tasks = data.tasks.map((task) => task.id === checkbox.dataset.taskToggle ? { ...task, done: checkbox.checked } : task);
+        const status = checkbox.checked ? "done" : "todo";
+        data.tasks = data.tasks.map((task) => task.id === checkbox.dataset.taskToggle ? { ...task, status, done: checkbox.checked } : task);
         if (!saveData()) { data.tasks = prior; return renderTasks(); }
         render();
       });
-      $("#task-list").addEventListener("click", (event) => {
+      $("#task-kanban").addEventListener("dragstart", (event) => {
+        const card = event.target.closest("[data-task-card]");
+        if (!card) return;
+        event.dataTransfer.setData("text/plain", card.dataset.taskCard);
+        event.dataTransfer.effectAllowed = "move";
+      });
+      $("#task-kanban").addEventListener("dragover", (event) => {
+        const column = event.target.closest("[data-kanban-column]");
+        if (!column) return;
+        event.preventDefault();
+        column.classList.add("drag-target");
+      });
+      $("#task-kanban").addEventListener("dragleave", (event) => {
+        const column = event.target.closest("[data-kanban-column]");
+        if (column && !column.contains(event.relatedTarget)) column.classList.remove("drag-target");
+      });
+      $("#task-kanban").addEventListener("drop", (event) => {
+        const column = event.target.closest("[data-kanban-column]");
+        if (!column) return;
+        event.preventDefault();
+        column.classList.remove("drag-target");
+        const id = event.dataTransfer.getData("text/plain");
+        const status = column.dataset.kanbanColumn;
+        const previous = data.tasks;
+        data.tasks = data.tasks.map((task) => task.id === id ? { ...task, status, done: status === "done" } : task);
+        if (!saveData()) { data.tasks = previous; return renderTasks(); }
+        render();
+      });
+      $("#task-panel").addEventListener("click", (event) => {
         const edit = event.target.closest("[data-edit-task]");
         const remove = event.target.closest("[data-delete-task]");
         if (edit) openTaskDialog(data.tasks.find((task) => task.id === edit.dataset.editTask));
@@ -956,7 +1362,7 @@
       });
       $("#clear-completed").addEventListener("click", () => {
         const prior = data.tasks;
-        data.tasks = data.tasks.filter((task) => !task.done);
+        data.tasks = data.tasks.filter((task) => taskStatus(task) !== "done");
         if (!saveData()) { data.tasks = prior; return; }
         render();
         showToast("Completed goals cleared.");
@@ -1091,19 +1497,11 @@
           if (!window.confirm("Restoring a backup will replace the study data currently saved in this browser. Continue?")) return;
           const previous = data;
           if (data.timer?.running) finalizeRunningTimer(data.timer);
-          data = {
-            ...emptyData(), ...imported,
-            tasks: imported.tasks,
-            sessions: Array.isArray(imported.sessions) ? imported.sessions : (Array.isArray(imported.logs) ? imported.logs : []),
-            logs: Array.isArray(imported.logs) ? imported.logs : (Array.isArray(imported.sessions) ? imported.sessions : []),
-            questions: Array.isArray(imported.questions) ? imported.questions : [],
-            modules: Array.isArray(imported.modules) ? imported.modules : [],
-            flashcards: Array.isArray(imported.flashcards) ? imported.flashcards : [],
-            timer: imported.timer && typeof imported.timer === "object" ? { ...imported.timer, running: false, paused: Boolean(imported.timer.running || imported.timer.paused), startedAt: undefined } : null
-          };
+          data = normalizePlannerData(imported);
           if (!saveData()) { data = previous; return; }
           clearInterval(timerInterval);
           timerInterval = null;
+          setTheme(data.preferences.theme || "light");
           render();
           showToast("Backup restored successfully.");
         } catch (error) {
@@ -1114,10 +1512,14 @@
         }
       });
 
-      setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+      let savedTheme = null;
+      try { savedTheme = localStorage.getItem(THEME_KEY); }
+      catch (error) { console.error("Could not read appearance preference:", error); }
+      setTheme(data.preferences.theme || savedTheme || (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
       $("#question-year").value = String(new Date().getFullYear());
       const initialView = location.hash.slice(1);
       render();
+      window.setInterval(() => renderExamCountdown(), 60000);
       navigate(["dashboard", "predictor", "schedule", "modules", "flashcards", "settings"].includes(initialView) ? initialView : "dashboard");
       const initializeOnReady = () => { void initializeSupabase(); };
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeOnReady, { once: true });

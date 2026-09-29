@@ -1,6 +1,6 @@
 # Studyspace — Smart Study Planner
 
-Studyspace is a responsive study planner built from [`index.html`](./index.html) and [`app.js`](./app.js), with Tailwind CSS and the Supabase client loaded from CDNs. Study goals, past-paper entries, modules, study sessions, flashcards, and timer state are saved immediately in browser `localStorage`; when a user signs in, changes also sync to Supabase.
+Studyspace is a responsive study planner built from [`index.html`](./index.html) and [`app.js`](./app.js), with Tailwind CSS and the Supabase client loaded from CDNs. Study goals, past-paper entries, modules, study sessions, flashcards, planner preferences, quick notes, and energy check-ins are saved immediately in browser `localStorage`; when a user signs in, changes also sync to Supabase.
 
 ## Run locally
 
@@ -73,7 +73,7 @@ The app uses Supabase Auth and stores one JSON data document per account in `pub
    ```
 
 3. If you previously created `user_data` using the earlier `data` column, rename that column once: `alter table public.user_data rename column data to planner_data;`. In Supabase **Authentication → URL Configuration**, add the deployed site URL (and local development URL, such as `http://localhost:8000`) to the allowed redirect URLs. Enable Email auth. If email confirmation is enabled, new users must confirm their email before signing in.
-4. Deploy both `index.html` and `app.js` over HTTPS. Use **Login** or **Sign up** to access an account. The same account can load the saved study data on another device.
+4. Deploy both `index.html` and `app.js` over HTTPS. Use **Login** or **Sign up** to access an account. **Forgot password?** emails a recovery link to the supplied address; ensure the deployed site URL is allowed in Supabase Auth redirects. Opening the link in the app lets the user set a new password. The same account can load the saved study data on another device.
 
 The browser key is intentionally a public publishable key; row-level security restricts each row to its owner. Never add a service-role key to client-side code. Supabase failures do not discard local changes; the app reports a sync error and keeps local storage available.
 
@@ -81,13 +81,18 @@ The browser key is intentionally a public publishable key; row-level security re
 
 - Fixed sidebar navigation for Dashboard, Predictor, Study schedule, Modules, Flashcards, and Settings.
 - Create, edit, complete, search, filter, and delete study goals with descriptions, deadlines, and color-coded priority.
+- Switch between a searchable list and a drag-and-drop Kanban board; set To do, In progress, or Done status, track subtasks, and color-code subjects.
 - Today's completion progress, high-yield tasks remaining, and a study streak. Log a study session from the streak card or track focus time with the Pomodoro timer.
+- Set an exam target and follow its live days/hours/minutes countdown; visualize the last 35 days of focused study in the activity heatmap.
+- Save a daily energy check-in and use the auto-saving quick-notes drawer to capture thoughts without losing your place.
+- Generate local rain, coffee-shop, or soft lo-fi ambience with the browser's Web Audio API; no audio files are downloaded or streamed.
 - Past-paper question and tag logging, a recurrence table, and a frequency-ranked exam focus list.
 - Exam-weighted module tracker with auto-scored high, medium, and low yield, plus module links on study goals.
 - Persistent 25-minute focus / 5-minute break timer; focus time is logged against an optional task or module, including when pausing or resetting early.
 - Smart schedule ordered by due date, with goal priority and module yield used to rank same-day work; module exam dates appear alongside study goals.
 - Quick-revise flashcards with reveal/hide answers and full create, edit, and delete controls.
-- Persistent light/dark appearance and JSON backup export/import for goals, paper entries, modules, sessions, flashcards, and timer settings.
+- Persistent light/dark appearance and JSON backup export/import for goals, paper entries, modules, sessions, flashcards, task states, notes, preferences, and timer settings.
+- Power-user shortcuts: `Ctrl/Cmd + N` opens a new goal, and `Ctrl/Cmd + Shift + P` toggles the Pomodoro timer.
 - Optional Supabase email/password accounts with owner-isolated row-level security and cloud data sync.
 - Existing Studyspace task, paper, module, and study-log data remains in the same browser storage.
 
