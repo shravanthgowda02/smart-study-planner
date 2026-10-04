@@ -16,15 +16,16 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[character]);
       const emptyData = () => ({
-        version: 2, tasks: [], sessions: [], questions: [], modules: [], logs: [], flashcards: [], timer: null,
-        viewMode: "list", subjectColors: {}, targetExam: null, notes: "", energyLogs: [], preferences: {}, ambientTrack: "rain"
+        version: 3, tasks: [], sessions: [], questions: [], modules: [], logs: [], flashcards: [], timer: null,
+        viewMode: "list", subjectColors: {}, targetExam: null, notes: "", energyLogs: [], preferences: {}, ambientTrack: "rain",
+        documents: [], topicReminder: null
       });
       function normalizePlannerData(value, pauseTimer = true) {
         const record = value && typeof value === "object" && !Array.isArray(value) ? value : {};
         const rawTasks = Array.isArray(record.tasks) ? record.tasks : [];
         return {
           ...emptyData(), ...record,
-          version: 2,
+          version: 3,
           tasks: rawTasks.filter((task) => task && typeof task === "object" && !Array.isArray(task)).map((task) => {
             const status = ["todo", "in_progress", "done"].includes(task.status) ? task.status : task.done ? "done" : "todo";
             return {
@@ -50,7 +51,23 @@
           notes: typeof record.notes === "string" ? record.notes.slice(0, 12000) : "",
           energyLogs: Array.isArray(record.energyLogs) ? record.energyLogs.filter((entry) => entry && typeof entry.date === "string" && ["high", "medium", "low"].includes(entry.level)) : [],
           preferences: record.preferences && typeof record.preferences === "object" && !Array.isArray(record.preferences) ? record.preferences : {},
-          ambientTrack: ["rain", "cafe", "lofi"].includes(record.ambientTrack) ? record.ambientTrack : "rain"
+          ambientTrack: ["rain", "cafe", "lofi"].includes(record.ambientTrack) ? record.ambientTrack : "rain",
+          documents: Array.isArray(record.documents) ? record.documents.filter((document) => document
+            && typeof document.id === "string" && typeof document.path === "string"
+            && typeof document.name === "string" && ["module", "pyq"].includes(document.docType))
+            .slice(0, 100).map((document) => ({
+              id: document.id, path: document.path.slice(0, 512), name: document.name.slice(0, 180),
+              subject: typeof document.subject === "string" ? document.subject.slice(0, 60) : "",
+              docType: document.docType, mimeType: typeof document.mimeType === "string" ? document.mimeType.slice(0, 120) : "",
+              size: Number.isFinite(Number(document.size)) ? Math.max(0, Number(document.size)) : 0,
+              createdAt: typeof document.createdAt === "string" ? document.createdAt : new Date().toISOString(),
+              ownerId: typeof document.ownerId === "string" ? document.ownerId : "",
+              extractedText: typeof document.extractedText === "string" ? document.extractedText.slice(0, 18000) : "",
+              extractionWarning: typeof document.extractionWarning === "string" ? document.extractionWarning.slice(0, 200) : ""
+            })) : [],
+          topicReminder: record.topicReminder && typeof record.topicReminder === "object"
+            && typeof record.topicReminder.topic === "string" && Number.isFinite(Date.parse(record.topicReminder.dueAt))
+            ? { topic: record.topicReminder.topic.slice(0, 180), dueAt: new Date(record.topicReminder.dueAt).toISOString() } : null
         };
       }
       let toastTimeout;
@@ -70,6 +87,10 @@
         }
       }
 
+      function visibleStudyDocuments() {
+        return authUser ? data.documents.filter((document) => document.ownerId === authUser.id) : data.documents;
+      }
+
       let data = loadData();
       let supabaseClient = null;
       let authUser = null;
@@ -83,6 +104,10 @@
       let scratchSaveTimer = null;
       let ambientState = null;
       let renderedExamTarget = null;
+      let predictionResults = [];
+      let predictionHasRun = false;
+      let topicReminderTimeout = null;
+      let focusPaneMode = "questions";
 
       function setCloudStatus(message, tone = "") {
         const status = $("#cloud-status");
@@ -136,6 +161,8 @@
             snapshot.timer.paused = true;
             delete snapshot.timer.startedAt;
           }
+          snapshot.documents = (Array.isArray(snapshot.documents) ? snapshot.documents : [])
+            .filter((document) => document.ownerId === expectedUserId);
           const { error } = await supabaseClient.from("user_data").upsert({
             user_id: session.user.id,
             planner_data: snapshot,
@@ -163,9 +190,12 @@
         }, 650);
       }
 
-      function hasStudyData(value) {
-        return ["tasks", "sessions", "questions", "modules", "logs", "flashcards", "energyLogs"].some((key) => Array.isArray(value[key]) && value[key].length > 0)
-          || Boolean(value.timer || value.notes || value.targetExam || Object.keys(value.subjectColors || {}).length || value.viewMode === "kanban" || Object.keys(value.preferences || {}).length || value.ambientTrack !== "rain");
+      function hasStudyData(value, userId = "") {
+        const hasCoreData = ["tasks", "sessions", "questions", "modules", "logs", "flashcards", "energyLogs"]
+          .some((key) => Array.isArray(value[key]) && value[key].length > 0);
+        const hasOwnedDocuments = Array.isArray(value.documents) && value.documents.some((document) => document.ownerId === userId);
+        return hasCoreData || hasOwnedDocuments
+          || Boolean(value.timer || value.notes || value.targetExam || value.topicReminder || Object.keys(value.subjectColors || {}).length || value.viewMode === "kanban" || Object.keys(value.preferences || {}).length || value.ambientTrack !== "rain");
       }
 
       function normalizeCloudData(value) {
@@ -186,7 +216,7 @@
           if (row?.planner_data) {
             const cloudData = normalizeCloudData(row.planner_data);
             const sameData = JSON.stringify(data) === JSON.stringify(cloudData);
-            const localHasData = hasStudyData(data);
+            const localHasData = hasStudyData(data, userId);
             const cloudHasData = hasStudyData(cloudData);
             if (!sameData && localHasData && !cloudHasData) {
               cloudSyncAllowed = true;
@@ -239,6 +269,10 @@
         cloudSyncAllowed = false;
         clearTimeout(cloudSyncTimer);
         updateAuthUI();
+        predictionResults = [];
+        predictionHasRun = false;
+        render();
+        renderPredictionResults();
         if (!user) {
           setCloudStatus(SUPABASE_CONFIGURED ? "Signed out · data remains on this device." : "Cloud sync is not configured.");
           return;
@@ -959,6 +993,511 @@
         $("#notes-open").focus();
       }
 
+      const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+      const MAX_EXTRACTED_CHARS = 18000;
+      const STORAGE_BUCKET = "study-materials";
+
+      function setDocumentUploadStatus(docType, message, isError = false) {
+        const status = $(`#${docType}-upload-status`);
+        status.textContent = message;
+        status.style.color = isError ? "var(--red)" : "";
+      }
+
+      function safeDocumentName(name) {
+        const leaf = String(name || "study-document").split(/[\\/]/).pop();
+        return leaf.replace(/[^\p{L}\p{N}._ -]/gu, "_").replace(/\s+/g, "_").slice(0, 140) || "study-document";
+      }
+
+      function getDocumentExtension(name) {
+        return String(name || "").split(".").pop().toLocaleLowerCase();
+      }
+
+      async function extractStudyText(file) {
+        const extension = getDocumentExtension(file.name);
+        if (extension === "txt" || extension === "md") {
+          return (await file.text()).slice(0, MAX_EXTRACTED_CHARS);
+        }
+        if (extension !== "pdf") throw new Error("Only PDF, TXT, and Markdown files are supported.");
+        if (!window.pdfjsLib?.getDocument) throw new Error("PDF text extraction is unavailable; the file can still be stored and previewed.");
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+        const pageLimit = Math.min(pdf.numPages, 30);
+        const pages = [];
+        for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          const content = await page.getTextContent();
+          pages.push(content.items.map((item) => "str" in item ? item.str : "").filter(Boolean).join(" "));
+          if (pages.join("\n").length >= MAX_EXTRACTED_CHARS) break;
+        }
+        return pages.join("\n").slice(0, MAX_EXTRACTED_CHARS);
+      }
+
+      async function uploadStudyDocument(file, docType) {
+        if (!["module", "pyq"].includes(docType)) throw new Error("Choose a supported document category.");
+        if (!file || !file.name) throw new Error("Choose a document to upload.");
+        if (!authUser || !supabaseClient) throw new Error("Sign in to upload documents to your private library.");
+        if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) throw new Error("Choose a non-empty file smaller than 20 MB.");
+        const extension = getDocumentExtension(file.name);
+        if (!["pdf", "txt", "md"].includes(extension)) throw new Error("Choose a PDF, TXT, or Markdown file.");
+        if (data.documents.length >= 100) throw new Error("Your library has reached the 100-document limit.");
+
+        const userId = authUser.id;
+        const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!sessionData.session || sessionData.session.user.id !== userId) throw new Error("Your session changed. Sign in again before uploading.");
+
+        const inputId = docType === "module" ? "#module-document-subject" : "#pyq-document-subject";
+        const subject = $(inputId).value.trim().slice(0, 60);
+        let extractedText = "";
+        let extractionWarning = "";
+        try {
+          extractedText = await extractStudyText(file);
+          if (!extractedText.trim()) extractionWarning = "No selectable text found; scanned PDFs need OCR.";
+        } catch (error) {
+          extractionWarning = error.message || "Text extraction failed.";
+        }
+
+        const id = makeId();
+        const objectPath = `${userId}/${docType}/${id}_${safeDocumentName(file.name)}`;
+        const contentType = extension === "pdf" ? "application/pdf" : extension === "md" ? "text/markdown" : "text/plain";
+        const { error: uploadError } = await supabaseClient.storage.from(STORAGE_BUCKET).upload(objectPath, file, {
+          cacheControl: "3600", contentType, upsert: false
+        });
+        if (uploadError) throw uploadError;
+
+        const documentRecord = {
+          id, path: objectPath, name: safeDocumentName(file.name), docType, subject,
+          mimeType: contentType, size: file.size, createdAt: new Date().toISOString(), ownerId: userId,
+          extractedText, extractionWarning
+        };
+        data.documents = [...data.documents, documentRecord];
+        if (!saveData()) {
+          data.documents = data.documents.filter((document) => document.id !== id);
+          const { error: rollbackError } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([objectPath]);
+          if (rollbackError) console.error("Could not roll back an uploaded document after local storage failed:", rollbackError);
+          throw new Error("The document could not be saved to local planner data.");
+        }
+        render();
+        showToast(extractionWarning
+          ? `Uploaded ${file.name}; note: ${extractionWarning}`
+          : `${docType === "pyq" ? "PYQ" : "Module"} document uploaded and analyzed.`);
+        return documentRecord;
+      }
+
+      async function previewStudyDocument(documentId) {
+        const document = data.documents.find((item) => item.id === documentId);
+        if (!document) return showToast("That document is no longer in your library.");
+        if (!supabaseClient || !authUser || document.ownerId !== authUser.id) return showToast("Sign in to the account that owns this document to preview it.");
+        const preview = window.open("about:blank", "_blank");
+        if (preview) {
+          preview.opener = null;
+          preview.document.title = "Loading private study document…";
+          preview.document.body.textContent = "Creating a temporary private preview link…";
+        }
+        try {
+          const { data: result, error } = await supabaseClient.storage.from(STORAGE_BUCKET).createSignedUrl(document.path, 60);
+          if (error) throw error;
+          if (!result?.signedUrl) throw new Error("Supabase did not return a preview link.");
+          if (preview) preview.location.replace(result.signedUrl);
+          else window.location.assign(result.signedUrl);
+        } catch (error) {
+          preview?.close();
+          console.error("Could not create a private document preview:", error);
+          showToast(`Couldn't preview this document: ${error.message || "Check Storage setup and access policies."}`);
+        }
+      }
+
+      async function deleteStudyDocument(documentId) {
+        const document = data.documents.find((item) => item.id === documentId);
+        if (!document) return;
+        if (!authUser || !supabaseClient || document.ownerId !== authUser.id) {
+          return showToast("Sign in to the account that owns this document to delete it.");
+        }
+        if (!window.confirm(`Delete "${document.name}" from your private study library?`)) return;
+        const previous = data.documents;
+        data.documents = data.documents.filter((item) => item.id !== documentId);
+        if (!saveData()) {
+          data.documents = previous;
+          return;
+        }
+        const { error } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([document.path]);
+        if (error) {
+          data.documents = previous;
+          saveData();
+          console.error("Could not delete study document from Supabase Storage:", error);
+          showToast(`The file wasn't deleted: ${error.message || "Check your Storage permissions."}`);
+          return;
+        }
+        render();
+        showToast("Document deleted.");
+      }
+
+      function renderDocuments() {
+        const documents = visibleStudyDocuments();
+        $("#document-count").textContent = `${documents.length} ${documents.length === 1 ? "document" : "documents"}`;
+        $("#documents-empty").hidden = documents.length > 0;
+        $("#document-list").innerHTML = documents.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((document) => {
+          const isOwner = Boolean(authUser && document.ownerId === authUser.id);
+          const badge = document.docType === "pyq" ? "PYQ" : "Module";
+          const date = new Date(document.createdAt);
+          const dateLabel = Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+          const warning = document.extractionWarning ? ` · ${document.extractionWarning}` : "";
+          return `<article class="document-row">
+            <div><div class="document-name"><span class="document-type ${document.docType === "pyq" ? "pyq" : ""}">${badge}</span>${escapeHTML(document.name)}</div>
+              <div class="document-detail">${escapeHTML(document.subject || "General")} · ${escapeHTML(dateLabel)} · ${(document.size / 1024 / 1024).toFixed(1)} MB${escapeHTML(warning)}</div></div>
+            <div class="document-actions"><button class="quiet-btn" type="button" data-preview-document="${escapeHTML(document.id)}" ${isOwner ? "" : "disabled"}>Preview</button><button class="quiet-btn" type="button" data-delete-document="${escapeHTML(document.id)}" aria-label="Delete ${escapeHTML(document.name)}" ${isOwner ? "" : "disabled"}>Delete</button></div>
+          </article>`;
+        }).join("");
+        const sourceSelect = $("#focus-document-select");
+        const selectedSource = documents.some((document) => document.id === sourceSelect.value) ? sourceSelect.value : "";
+        sourceSelect.innerHTML = `<option value="">Choose an uploaded document</option>${documents.map((document) =>
+          `<option value="${escapeHTML(document.id)}">${escapeHTML(document.docType === "pyq" ? "PYQ" : "Module")} · ${escapeHTML(document.name)}</option>`
+        ).join("")}`;
+        sourceSelect.value = selectedSource;
+        renderFocusWorkspace();
+      }
+
+      function documentTopicPhrases(text) {
+        const phrases = new Set();
+        const lines = String(text || "").replace(/\r/g, "\n").split(/\n+/);
+        lines.forEach((line) => {
+          const trimmed = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim();
+          if (trimmed.length >= 5 && trimmed.length <= 100 && /[a-z]/i.test(trimmed)) phrases.add(trimmed);
+        });
+        const unitPattern = /\b(?:unit|chapter|module|topic|section)\s+\d{1,2}(?:\s*[:—-]\s*[^.;\n]{2,75})?/gi;
+        for (const match of String(text || "").matchAll(unitPattern)) phrases.add(match[0].trim());
+        return [...phrases].slice(0, 100);
+      }
+
+      function topicKey(topic) {
+        return String(topic || "").toLocaleLowerCase().normalize("NFKD")
+          .replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+      }
+
+      function analyzeExamTopics(subjectFilter = "") {
+        const candidates = new Map();
+        const addCandidate = (label, subject = "", year = null, sourceType = "question", docId = "", moduleWeight = 0) => {
+          const cleanLabel = String(label || "").replace(/\s+/g, " ").trim().slice(0, 180);
+          const key = topicKey(cleanLabel);
+          if (key.length < 3) return;
+          const normalizedSubject = String(subject || "").trim();
+          if (subjectFilter && normalizedSubject.toLocaleLowerCase() !== subjectFilter.toLocaleLowerCase()) return;
+          if (!candidates.has(key)) candidates.set(key, {
+            key, topic: cleanLabel, subject: normalizedSubject || "General",
+            years: new Set(), pyqDocuments: new Set(), moduleDocuments: new Set(), questionEntries: 0, moduleWeights: []
+          });
+          const candidate = candidates.get(key);
+          if (!candidate.subject || candidate.subject === "General") candidate.subject = normalizedSubject || "General";
+          if (year) candidate.years.add(String(year));
+          if (sourceType === "question") candidate.questionEntries += 1;
+          if (sourceType === "pyq-document" && docId) candidate.pyqDocuments.add(docId);
+          if (sourceType === "module-document" && docId) candidate.moduleDocuments.add(docId);
+          if (moduleWeight > 0) candidate.moduleWeights.push(moduleWeight);
+        };
+
+        data.questions.forEach((question) => addCandidate(question.topic, question.subject, question.year));
+        data.modules.forEach((module) => addCandidate(module.name, module.subject, null, "module", "", Number(module.weight) || 0));
+        visibleStudyDocuments().forEach((document) => {
+          if (!document.extractedText) return;
+          const sourceType = document.docType === "pyq" ? "pyq-document" : "module-document";
+          documentTopicPhrases(document.extractedText).forEach((phrase) => addCandidate(phrase, document.subject, null, sourceType, document.id));
+        });
+
+        const totalYears = new Set(data.questions
+          .filter((question) => !subjectFilter || String(question.subject || "").toLocaleLowerCase() === subjectFilter.toLocaleLowerCase())
+          .map((question) => String(question.year))).size;
+        return [...candidates.values()].map((candidate) => {
+          const years = candidate.years.size;
+          const pyqSources = candidate.pyqDocuments.size;
+          const moduleSources = candidate.moduleDocuments.size;
+          const avgModuleWeight = candidate.moduleWeights.length
+            ? candidate.moduleWeights.reduce((sum, weight) => sum + weight, 0) / candidate.moduleWeights.length : 0;
+          const questionEvidence = candidate.questionEntries > 1 ? 10 : candidate.questionEntries ? 4 : 0;
+          const yearScore = totalYears ? Math.min(68, years / Math.min(totalYears, 4) * 68) : 0;
+          const documentScore = Math.min(22, pyqSources * 11) + Math.min(10, moduleSources * 5);
+          const weightScore = Math.min(15, avgModuleWeight * 0.3);
+          const probability = Math.min(96, Math.max(18, Math.round(yearScore + documentScore + questionEvidence + weightScore || (moduleSources ? 38 : 0))));
+          return {
+            ...candidate, probability,
+            reasons: [
+              years ? `${years} exam year${years === 1 ? "" : "s"}` : "",
+              pyqSources ? `${pyqSources} PYQ file${pyqSources === 1 ? "" : "s"}` : "",
+              moduleSources ? `${moduleSources} module source${moduleSources === 1 ? "" : "s"}` : "",
+              avgModuleWeight ? `${avgModuleWeight.toFixed(1)}% module weight` : "",
+              candidate.questionEntries ? `${candidate.questionEntries} logged entr${candidate.questionEntries === 1 ? "y" : "ies"}` : ""
+            ].filter(Boolean)
+          };
+        }).sort((a, b) => b.probability - a.probability || b.years.size - a.years.size || a.topic.localeCompare(b.topic))
+          .slice(0, 12);
+      }
+
+      function renderDocumentSubjectOptions() {
+        const select = $("#predictor-subject");
+        const current = select.value;
+        const subjects = [...new Set([
+          ...data.modules.map((module) => module.subject),
+          ...data.questions.map((question) => question.subject),
+          ...visibleStudyDocuments().map((document) => document.subject)
+        ].map((subject) => String(subject || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        select.innerHTML = `<option value="">All subjects</option>${subjects.map((subject) => `<option value="${escapeHTML(subject)}">${escapeHTML(subject)}</option>`).join("")}`;
+        if (subjects.includes(current)) select.value = current;
+      }
+
+      const ANSWER_STOP_WORDS = new Set([
+        "about", "after", "also", "among", "because", "been", "being", "between", "could", "does", "from",
+        "have", "into", "more", "most", "other", "over", "such", "than", "that", "their", "them", "there",
+        "these", "they", "this", "those", "through", "under", "using", "what", "when", "where", "which",
+        "while", "with", "would", "your", "explain", "describe", "discuss", "principles", "process", "key"
+      ]);
+
+      function topicTerms(topic) {
+        return topicKey(topic).split(" ").filter((word) => word.length > 2 && !ANSWER_STOP_WORDS.has(word));
+      }
+
+      function generateModelAnswer(item) {
+        const terms = topicTerms(item.topic);
+        const sources = visibleStudyDocuments().filter((document) => document.docType === "module"
+          && document.extractedText
+          && (!item.subject || item.subject === "General" || !document.subject
+            || document.subject.toLocaleLowerCase() === item.subject.toLocaleLowerCase()));
+        const scoredSentences = [];
+        sources.forEach((document) => {
+          const sentences = document.extractedText
+            .replace(/\r/g, "\n")
+            .split(/(?<=[.!?])\s+|\n+/)
+            .map((sentence) => sentence.replace(/\s+/g, " ").trim())
+            .filter((sentence) => sentence.length >= 24 && sentence.length <= 500);
+          sentences.forEach((sentence) => {
+            const normalized = topicKey(sentence);
+            const hits = terms.filter((term) => normalized.split(" ").includes(term)).length;
+            const score = terms.length ? hits / terms.length : 0;
+            if (hits > 0) scoredSentences.push({ sentence, score, hits, source: document.name });
+          });
+        });
+        const chosen = [];
+        const sentenceKeys = new Set();
+        scoredSentences.sort((a, b) => b.score - a.score || b.hits - a.hits || a.sentence.length - b.sentence.length)
+          .forEach((candidate) => {
+            const key = topicKey(candidate.sentence);
+            if (!sentenceKeys.has(key) && chosen.length < 3) {
+              sentenceKeys.add(key);
+              chosen.push(candidate);
+            }
+          });
+        if (!chosen.length) {
+          return {
+            text: "No matching explanation was found in the extracted module text. Add searchable lecture notes or a text-readable module PDF; this tool does not invent an answer.",
+            sources: []
+          };
+        }
+        return {
+          text: chosen.map((item) => item.sentence).join(" "),
+          sources: [...new Set(chosen.map((item) => item.source))]
+        };
+      }
+
+      function renderPredictionAnswer(item, index) {
+        const answer = generateModelAnswer(item);
+        const sourceLabel = answer.sources.length ? `\n\nSource: ${answer.sources.join(", ")}` : "";
+        return `<div class="prediction-answer" data-answer-body="${index}" hidden><strong>Source-based answer</strong><br>${escapeHTML(answer.text)}${escapeHTML(sourceLabel)}</div>`;
+      }
+
+      function renderFocusWorkspace() {
+        const selectedId = $("#focus-document-select").value;
+        const selectedDocument = visibleStudyDocuments().find((document) => document.id === selectedId);
+        $("#focus-source-title").textContent = selectedDocument?.name || "Source material";
+        $("#focus-source-empty").hidden = Boolean(selectedDocument?.extractedText);
+        $("#focus-source-empty").textContent = selectedDocument
+          ? selectedDocument.extractedText ? "" : selectedDocument.extractionWarning || "No text was extracted from this document. Preview the original PDF instead."
+          : "Choose an uploaded document to view its extracted text here.";
+        $("#focus-source-text").hidden = !selectedDocument?.extractedText;
+        $("#focus-source-text").textContent = selectedDocument?.extractedText || "";
+        const preview = $("#focus-preview-document");
+        preview.hidden = !selectedDocument;
+        preview.disabled = !authUser || selectedDocument?.ownerId !== authUser?.id;
+
+        const questionList = $("#focus-question-list");
+        questionList.innerHTML = predictionResults.map((item, index) => `<article class="focus-question"><strong>${escapeHTML(item.question || `Explain the key ideas and significance of ${item.topic}.`)}</strong><div class="prediction-reason">${item.probability}% estimated signal · ${escapeHTML(item.topic)}</div><button class="prediction-answer-toggle" type="button" data-answer-index="${index}" aria-expanded="false">Show source-based answer</button>${renderPredictionAnswer(item, index)}</article>`).join("");
+        const taskList = $("#focus-task-list");
+        const openTasks = data.tasks.filter((task) => taskStatus(task) !== "done")
+          .slice().sort((a, b) => String(a.due || "9999").localeCompare(String(b.due || "9999"))).slice(0, 12);
+        taskList.innerHTML = openTasks.map((task) => `<label class="focus-task"><input type="checkbox" data-focus-task="${escapeHTML(task.id)}"><span>${escapeHTML(task.title)} · ${escapeHTML(friendlyDue(task.due))}</span></label>`).join("");
+        const showingTasks = focusPaneMode === "tasks";
+        $("#focus-task-list").hidden = !showingTasks;
+        $("#focus-question-list").hidden = showingTasks;
+        $("#focus-pane-mode").textContent = showingTasks ? "Show questions" : "Show tasks";
+        $("#focus-pane-mode").setAttribute("aria-pressed", String(showingTasks));
+        $("#focus-pane-empty").hidden = showingTasks ? openTasks.length > 0 : predictionResults.length > 0;
+        $("#focus-pane-empty").textContent = showingTasks
+          ? "No open tasks. Add a study goal from the dashboard."
+          : "Analyze your materials to populate this pane with revision questions.";
+      }
+
+      function renderPredictionResults() {
+        const list = $("#prediction-list");
+        const empty = $("#prediction-empty");
+        list.innerHTML = predictionResults.map((item) => {
+          const tone = item.probability >= 70 ? "" : item.probability >= 45 ? "medium" : "low";
+          const uniqueYears = [...item.years].sort((a, b) => Number(a) - Number(b));
+          const prompt = item.question || `Explain the key ideas, evidence, and significance of ${item.topic}.`;
+          const details = [
+            item.reasons.join(" · ") || "Inferred from the uploaded study material",
+            uniqueYears.length ? `Years: ${uniqueYears.join(", ")}` : "",
+          ].filter(Boolean).join(" · ");
+          return `<article class="prediction-item"><span class="prediction-score ${tone}">${item.probability}%</span><div><div class="prediction-title">${escapeHTML(prompt)}</div><div class="prediction-reason">${escapeHTML(`${item.topic} · ${details}`)}</div><button class="prediction-answer-toggle" type="button" data-answer-index="${predictionResults.indexOf(item)}" aria-expanded="false">Show source-based answer</button>${renderPredictionAnswer(item, predictionResults.indexOf(item))}</div><span class="prediction-confidence">${item.probability >= 70 ? "Higher" : item.probability >= 45 ? "Moderate" : "Emerging"} signal</span></article>`;
+        }).join("");
+        empty.hidden = predictionResults.length > 0;
+        renderConceptMap();
+        renderReminderOptions();
+        renderFocusWorkspace();
+      }
+
+      function handlePredictionAnswerClick(event) {
+        const button = event.target.closest("[data-answer-index]");
+        if (!button) return;
+        const index = Number(button.dataset.answerIndex);
+        if (!Number.isInteger(index) || !predictionResults[index]) return;
+        const answer = button.closest("article")?.querySelector(`[data-answer-body="${index}"]`);
+        if (!answer) return;
+        answer.hidden = !answer.hidden;
+        button.setAttribute("aria-expanded", String(!answer.hidden));
+        button.textContent = answer.hidden ? "Show source-based answer" : "Hide source-based answer";
+      }
+
+      function exportStudySheet() {
+        if (!predictionResults.length) {
+          showToast("Analyze your study materials before exporting a study sheet.");
+          return;
+        }
+        const lines = [
+          "# Studyspace · Predicted study sheet",
+          "",
+          `Generated: ${new Date().toLocaleString()}`,
+          "",
+          "> Topic percentages are heuristic estimates from your uploaded materials and paper history, not exam guarantees. Answers below are excerpts from your module text, not AI-generated responses.",
+          ""
+        ];
+        predictionResults.forEach((item, index) => {
+          const answer = generateModelAnswer(item);
+          lines.push(
+            `## ${index + 1}. ${item.question || `Explain the key ideas and significance of ${item.topic}.`}`,
+            "",
+            `**Topic:** ${item.topic}  `,
+            `**Estimated signal:** ${item.probability}%  `,
+            `**Evidence:** ${item.reasons.join("; ") || "Inferred from uploaded study material"}${item.years.size ? `; years: ${[...item.years].sort().join(", ")}` : ""}`,
+            "",
+            "**Source-based answer**",
+            "",
+            answer.text,
+            answer.sources.length ? `\n\n*Source: ${answer.sources.join(", ")}*` : "",
+            ""
+          );
+        });
+        const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `studyspace-study-sheet-${todayISO()}.md`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast("Study sheet exported.");
+      }
+
+      function renderConceptMap() {
+        const container = $("#concept-map");
+        if (!predictionResults.length) {
+          container.innerHTML = '<div class="empty-state"><strong>No concept map yet.</strong><span>Run the topic analyzer to build a visual revision tree.</span></div>';
+          return;
+        }
+        const nodes = predictionResults.slice(0, 8).map((item) => {
+          const relatedCards = data.flashcards.filter((card) => !item.subject || card.subject?.toLocaleLowerCase() === item.subject.toLocaleLowerCase());
+          const excerpt = data.documents.find((document) => document.extractedText && topicKey(document.extractedText).includes(item.key));
+          const cardText = relatedCards.slice(0, 2).map((card) => `${card.front} → ${card.back}`).join(" | ");
+          const sourceText = excerpt ? excerpt.extractedText.slice(0, 320) : "";
+          const explanation = [item.reasons.join(" · "), sourceText, cardText].filter(Boolean).join(" — ")
+            || "Add a flashcard for this topic to attach a recall prompt.";
+          return `<details class="concept-node"><summary>${escapeHTML(item.topic)} · ${item.probability}%</summary><p>${escapeHTML(explanation)}</p></details>`;
+        }).join("");
+        container.innerHTML = `<div class="concept-root">Exam focus · ${predictionResults.length} topics</div><div class="concept-branches">${nodes}</div>`;
+      }
+
+      function renderReminderOptions() {
+        const select = $("#reminder-topic");
+        const current = select.value;
+        select.innerHTML = predictionResults.length
+          ? predictionResults.map((item) => `<option value="${escapeHTML(item.topic)}">${escapeHTML(item.topic)}</option>`).join("")
+          : '<option value="">Analyze topics first</option>';
+        if (predictionResults.some((item) => item.topic === current)) select.value = current;
+        const notificationState = !("Notification" in window) ? "UNAVAILABLE"
+          : Notification.permission === "granted" ? "ENABLED"
+          : Notification.permission === "denied" ? "BLOCKED" : "ASK ON REMINDER";
+        $("#reminder-permission-status").textContent = notificationState;
+        $("#cancel-topic-reminder").hidden = !data.topicReminder;
+        if (!data.topicReminder) {
+          $("#reminder-current").textContent = "No topic reminder scheduled.";
+        } else {
+          const remaining = Date.parse(data.topicReminder.dueAt) - Date.now();
+          $("#reminder-current").textContent = remaining > 0
+            ? `Reminder set for “${data.topicReminder.topic}” · ${new Date(data.topicReminder.dueAt).toLocaleString()}`
+            : `Reminder for “${data.topicReminder.topic}” is due; waiting for the page to deliver it.`;
+        }
+      }
+
+      async function runExamPrediction() {
+        predictionHasRun = true;
+        predictionResults = analyzeExamTopics($("#predictor-subject").value);
+        renderPredictionResults();
+        if (!predictionResults.length) return showToast("No readable topics found. Add past-paper entries or upload text-readable PDFs/notes.");
+        showToast(`Analyzed study data and ranked ${predictionResults.length} topic hotspots.`);
+      }
+
+      async function deliverTopicReminder() {
+        const reminder = data.topicReminder;
+        if (!reminder) return;
+        data.topicReminder = null;
+        clearTimeout(topicReminderTimeout);
+        topicReminderTimeout = null;
+        saveData();
+        renderReminderOptions();
+        const message = `Time to revise: ${reminder.topic}`;
+        showToast(message);
+        if ("Notification" in window && Notification.permission === "granted") {
+          try { new Notification("Studyspace topic reminder", { body: message, tag: "studyspace-topic-reminder" }); }
+          catch (error) { console.error("Could not show topic reminder notification:", error); }
+        }
+      }
+
+      function scheduleSavedTopicReminder() {
+        clearTimeout(topicReminderTimeout);
+        if (!data.topicReminder) return;
+        const remaining = Date.parse(data.topicReminder.dueAt) - Date.now();
+        if (remaining <= 0) {
+          void deliverTopicReminder();
+          return;
+        }
+        topicReminderTimeout = setTimeout(() => { void deliverTopicReminder(); }, Math.min(remaining, 2_147_000_000));
+      }
+
+      async function scheduleTopicReminder() {
+        const topic = $("#reminder-topic").value;
+        const delayMinutes = Number($("#reminder-delay").value);
+        if (!topic || !predictionResults.some((item) => item.topic === topic)) return showToast("Analyze your topics and choose one for the reminder.");
+        if (!Number.isInteger(delayMinutes) || delayMinutes < 1 || delayMinutes > 10080) return showToast("Choose a valid reminder time.");
+        if (!("Notification" in window)) showToast("Browser notifications aren't supported; an in-app reminder will still be set.");
+        else if (Notification.permission === "default") {
+          try { await Notification.requestPermission(); }
+          catch (error) { console.error("Could not request notification permission:", error); }
+        }
+        const previous = data.topicReminder;
+        data.topicReminder = { topic, dueAt: new Date(Date.now() + delayMinutes * 60000).toISOString() };
+        if (!saveData()) { data.topicReminder = previous; return; }
+        scheduleSavedTopicReminder();
+        renderReminderOptions();
+        showToast(`Reminder set for ${topic}. Keep this page open to receive it on time.`);
+      }
+
       function render() {
         renderHeader();
         renderSummary();
@@ -970,7 +1509,12 @@
         renderSchedule();
         renderFlashcards();
         renderTimer();
+        renderDocuments();
+        renderDocumentSubjectOptions();
+        if (predictionHasRun) predictionResults = analyzeExamTopics($("#predictor-subject").value);
+        renderPredictionResults();
         renderSettings();
+        scheduleSavedTopicReminder();
       }
 
       function setTheme(theme, persist = false) {
@@ -997,11 +1541,11 @@
       }
 
       function navigate(view) {
-        const validViews = ["dashboard", "predictor", "schedule", "modules", "flashcards", "settings"];
+        const validViews = ["dashboard", "predictor", "intelligence", "schedule", "modules", "flashcards", "settings"];
         const valid = validViews.includes(view) ? view : "dashboard";
         $$(".page-view").forEach((section) => { section.hidden = section.id !== `${valid}-view`; });
         $$(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.viewLink === valid));
-        $("#crumb-section").textContent = ({ dashboard: "Workspace", predictor: "Exam insights", schedule: "Study schedule", modules: "Module tracker", flashcards: "Quick revise", settings: "Settings" })[valid];
+        $("#crumb-section").textContent = ({ dashboard: "Workspace", predictor: "Exam insights", intelligence: "AI exam predictor", schedule: "Study schedule", modules: "Module tracker", flashcards: "Quick revise", settings: "Settings" })[valid];
         if (location.hash !== `#${valid}`) history.replaceState(null, "", `#${valid}`);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -1034,7 +1578,12 @@
       }
 
       function exportBackup() {
-        const contents = { ...data, timer: data.timer ? { ...data.timer } : null, exportedAt: new Date().toISOString() };
+        const contents = {
+          ...data,
+          documents: authUser ? data.documents.filter((document) => document.ownerId === authUser.id) : data.documents,
+          timer: data.timer ? { ...data.timer } : null,
+          exportedAt: new Date().toISOString()
+        };
         if (contents.timer?.running) {
           contents.timer.remaining = timerRemaining();
           contents.timer.running = false;
@@ -1070,7 +1619,11 @@
           && (value.targetExam == null || (record(value.targetExam) && dateFromISO(value.targetExam.date) && (value.targetExam.label == null || typeof value.targetExam.label === "string")))
           && (value.notes == null || typeof value.notes === "string")
           && (value.subjectColors == null || record(value.subjectColors))
-          && (value.energyLogs == null || (Array.isArray(value.energyLogs) && value.energyLogs.every((entry) => record(entry) && typeof entry.date === "string" && ["high", "medium", "low"].includes(entry.level))));
+          && (value.energyLogs == null || (Array.isArray(value.energyLogs) && value.energyLogs.every((entry) => record(entry) && typeof entry.date === "string" && ["high", "medium", "low"].includes(entry.level))))
+          && (value.documents == null || (Array.isArray(value.documents) && value.documents.length <= 100 && value.documents.every((item) =>
+            record(item) && typeof item.id === "string" && typeof item.path === "string" && typeof item.name === "string"
+            && ["module", "pyq"].includes(item.docType) && (item.extractedText == null || typeof item.extractedText === "string"))))
+          && (value.topicReminder == null || (record(value.topicReminder) && typeof value.topicReminder.topic === "string" && Number.isFinite(Date.parse(value.topicReminder.dueAt))));
       }
 
       $("#theme-toggle").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
@@ -1485,6 +2038,103 @@
         showToast("Past-paper entry deleted.");
       });
 
+      async function processStudyDocumentFile(file, input, docType) {
+        if (!file || input.disabled) return;
+        const acceptedExtension = /\.(?:pdf|txt|md)$/i.test(file.name);
+        if (!acceptedExtension) {
+          setDocumentUploadStatus(docType, "Choose a PDF, TXT, or MD file.", true);
+          return showToast("Only PDF, TXT, and MD study documents are supported.");
+        }
+        setDocumentUploadStatus(docType, "Extracting text and uploading…");
+        input.disabled = true;
+        try {
+          await uploadStudyDocument(file, docType);
+          setDocumentUploadStatus(docType, "Uploaded · choose or drop another file.");
+        } catch (error) {
+          console.error(`Unable to upload ${docType} study document:`, error);
+          setDocumentUploadStatus(docType, error.message || "Upload failed.", true);
+          showToast(error.message || "The document could not be uploaded.");
+        } finally {
+          input.value = "";
+          input.disabled = false;
+        }
+      }
+
+      [
+        { selector: "#module-document-file", docType: "module" },
+        { selector: "#pyq-document-file", docType: "pyq" }
+      ].forEach(({ selector, docType }) => {
+        const input = $(selector);
+        input.addEventListener("change", async (event) => {
+          const [file] = event.currentTarget.files || [];
+          if (!file) return;
+          await processStudyDocumentFile(file, input, docType);
+        });
+        const dropzone = $(`[data-document-drop="${docType}"]`);
+        ["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          if (event.dataTransfer?.types.includes("Files")) dropzone.classList.add("drag-over");
+        }));
+        ["dragleave", "dragend"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
+          if (eventName === "dragleave" && dropzone.contains(event.relatedTarget)) return;
+          dropzone.classList.remove("drag-over");
+        }));
+        dropzone.addEventListener("drop", async (event) => {
+          event.preventDefault();
+          dropzone.classList.remove("drag-over");
+          const [file] = event.dataTransfer?.files || [];
+          if (file) await processStudyDocumentFile(file, input, docType);
+        });
+      });
+      $("#document-list").addEventListener("click", (event) => {
+        const preview = event.target.closest("[data-preview-document]");
+        const remove = event.target.closest("[data-delete-document]");
+        if (preview) void previewStudyDocument(preview.dataset.previewDocument);
+        if (remove) void deleteStudyDocument(remove.dataset.deleteDocument);
+      });
+      $("#run-prediction").addEventListener("click", () => { void runExamPrediction(); });
+      $("#export-study-sheet").addEventListener("click", exportStudySheet);
+      $("#prediction-list").addEventListener("click", handlePredictionAnswerClick);
+      $("#focus-question-list").addEventListener("click", handlePredictionAnswerClick);
+      $("#focus-document-select").addEventListener("change", renderFocusWorkspace);
+      $("#focus-preview-document").addEventListener("click", () => {
+        const documentId = $("#focus-document-select").value;
+        if (documentId) void previewStudyDocument(documentId);
+      });
+      $("#focus-pane-mode").addEventListener("click", () => {
+        focusPaneMode = focusPaneMode === "questions" ? "tasks" : "questions";
+        renderFocusWorkspace();
+      });
+      $("#focus-task-list").addEventListener("change", (event) => {
+        const checkbox = event.target.closest("[data-focus-task]");
+        if (!checkbox?.checked) return;
+        const previous = data.tasks;
+        data.tasks = data.tasks.map((task) => task.id === checkbox.dataset.focusTask
+          ? { ...task, status: "done", done: true }
+          : task);
+        if (!saveData()) { data.tasks = previous; return render(); }
+        render();
+        showToast("Study goal completed.");
+      });
+      $("#focus-open-tasks").addEventListener("click", () => {
+        navigate("dashboard");
+        window.requestAnimationFrame(() => $("#task-panel").scrollIntoView({ behavior: "smooth", block: "start" }));
+      });
+      $("#predictor-subject").addEventListener("change", () => {
+        if (predictionHasRun) predictionResults = analyzeExamTopics($("#predictor-subject").value);
+        renderPredictionResults();
+      });
+      $("#schedule-topic-reminder").addEventListener("click", () => { void scheduleTopicReminder(); });
+      $("#cancel-topic-reminder").addEventListener("click", () => {
+        const previous = data.topicReminder;
+        clearTimeout(topicReminderTimeout);
+        topicReminderTimeout = null;
+        data.topicReminder = null;
+        if (!saveData()) { data.topicReminder = previous; scheduleSavedTopicReminder(); return; }
+        renderReminderOptions();
+        showToast("Topic reminder cancelled.");
+      });
+
       $("#export-button").addEventListener("click", exportBackup);
       $("#settings-export").addEventListener("click", exportBackup);
       $("#settings-import").addEventListener("click", () => $("#import-file").click());
@@ -1520,7 +2170,8 @@
       const initialView = location.hash.slice(1);
       render();
       window.setInterval(() => renderExamCountdown(), 60000);
-      navigate(["dashboard", "predictor", "schedule", "modules", "flashcards", "settings"].includes(initialView) ? initialView : "dashboard");
+      navigate(["dashboard", "predictor", "intelligence", "schedule", "modules", "flashcards", "settings"].includes(initialView) ? initialView : "dashboard");
+      scheduleSavedTopicReminder();
       const initializeOnReady = () => { void initializeSupabase(); };
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeOnReady, { once: true });
       else initializeOnReady();

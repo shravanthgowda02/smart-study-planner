@@ -77,6 +77,51 @@ The app uses Supabase Auth and stores one JSON data document per account in `pub
 
 The browser key is intentionally a public publishable key; row-level security restricts each row to its owner. Never add a service-role key to client-side code. Supabase failures do not discard local changes; the app reports a sync error and keeps local storage available.
 
+### Enable private study-document uploads
+
+The AI Predictor view uploads PDFs and text notes to a **private** Storage bucket named `study-materials`. Run this additional SQL in the Supabase SQL Editor. The first folder in each object path is the authenticated user's UUID; the policies restrict listing, upload, preview, and deletion to that user.
+
+```sql
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'study-materials',
+  'study-materials',
+  false,
+  20971520,
+  array['application/pdf', 'text/plain', 'text/markdown']
+)
+on conflict (id) do update
+set public = false,
+    file_size_limit = 20971520,
+    allowed_mime_types = array['application/pdf', 'text/plain', 'text/markdown'];
+
+drop policy if exists "Users can read their own study materials" on storage.objects;
+create policy "Users can read their own study materials"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'study-materials'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists "Users can upload their own study materials" on storage.objects;
+create policy "Users can upload their own study materials"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'study-materials'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists "Users can delete their own study materials" on storage.objects;
+create policy "Users can delete their own study materials"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'study-materials'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+```
+
+The browser extracts selectable PDF text with PDF.js (up to 30 pages) and stores a bounded text excerpt with planner metadata for local topic analysis. Scanned/image-only PDFs need OCR before analysis. JSON backups preserve document metadata and extracted excerpts, but not uploaded binary files; those remain in the account's private Storage bucket. Document previews use short-lived signed links. The predictor is a transparent, client-side frequency heuristic based on uploaded text, module weights, and logged paper history—not a hosted generative AI service or a guarantee of exam content. Clicking a predicted question surfaces the best-matching sentences from the user's uploaded module text as a **source-based answer**; the app does not fabricate an answer when no passage matches. Export a ranked Markdown study sheet with probability estimates, evidence, and source-based answers. The split-screen focus workspace shows extracted source text alongside predictions or actionable open tasks. In-app reminders and browser notifications require the app tab to remain open; browser notification permission is requested only when setting a reminder.
+
 ## Features
 
 - Fixed sidebar navigation for Dashboard, Predictor, Study schedule, Modules, Flashcards, and Settings.
@@ -87,6 +132,10 @@ The browser key is intentionally a public publishable key; row-level security re
 - Save a daily energy check-in and use the auto-saving quick-notes drawer to capture thoughts without losing your place.
 - Generate local rain, coffee-shop, or soft lo-fi ambience with the browser's Web Audio API; no audio files are downloaded or streamed.
 - Past-paper question and tag logging, a recurrence table, and a frequency-ranked exam focus list.
+- Private module/PYQ document uploads with per-user Supabase Storage policies, temporary previews, and document removal.
+- Client-side, subject-filterable exam-topic hotspot estimates with an interactive concept map grounded in uploaded text and past-paper history.
+- Click-to-reveal, source-based answer excerpts; Markdown study-sheet export; and a split-screen workspace for source text with predicted questions or completable tasks.
+- Custom topic reminders with in-app alerts and optional browser notifications while the app tab is open.
 - Exam-weighted module tracker with auto-scored high, medium, and low yield, plus module links on study goals.
 - Persistent 25-minute focus / 5-minute break timer; focus time is logged against an optional task or module, including when pausing or resetting early.
 - Smart schedule ordered by due date, with goal priority and module yield used to rank same-day work; module exam dates appear alongside study goals.

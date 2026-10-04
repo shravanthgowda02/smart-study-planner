@@ -20,6 +20,7 @@
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -112,6 +113,63 @@
     .scratch-drawer.open{transform:translateX(0)}
     .scratch-textarea{flex:1;width:100%;min-height:150px;margin-top:15px;padding:13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);font:12px/1.7 var(--sans);resize:none}
     .scratch-footer{display:flex;justify-content:space-between;gap:8px;margin-top:9px;color:var(--text-3);font-size:9px}
+    .document-upload-grid,.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    .document-upload-card,.intelligence-card{padding:18px}
+    .upload-dropzone{display:grid;gap:8px;justify-items:start;margin-top:12px;padding:16px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2)}
+    .upload-dropzone.drag-over{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent)}
+    .upload-dropzone p{margin:0;color:var(--text-2);font-size:10px;line-height:1.5}
+    .upload-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .upload-file-label{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text-2);font-size:10px;font-weight:700;cursor:pointer}
+    .upload-file-label:hover{color:var(--accent);border-color:#d3dafa;background:var(--accent-soft)}
+    .upload-file-label input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;clip-path:inset(50%)}
+    .upload-note,.analysis-disclaimer{margin-top:10px;color:var(--text-3);font-size:9px;line-height:1.55}
+    .document-list{display:grid;gap:8px;margin-top:12px}
+    .document-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+    .document-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:700}
+    .document-detail{margin-top:4px;color:var(--text-3);font-size:8px}
+    .document-actions{display:flex;align-items:center;gap:5px}
+    .document-actions .quiet-btn{min-height:28px;padding:0 8px;font-size:8px}
+    .document-type{display:inline-flex;align-items:center;margin-right:6px;padding:3px 6px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:8px;font-weight:700}
+    .document-type.pyq{background:var(--amber-soft);color:var(--amber)}
+    .predictor-controls{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-top:13px;padding:13px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+    .predictor-controls .field{flex:1;max-width:280px}
+    .prediction-list{display:grid;gap:8px;margin-top:13px}
+    .prediction-item{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+    .prediction-score{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--red-soft);color:var(--red);font:600 9px var(--mono)}
+    .prediction-score.medium{background:var(--amber-soft);color:var(--amber)}
+    .prediction-score.low{background:var(--green-soft);color:var(--green)}
+    .prediction-title{font-size:10px;font-weight:700;line-height:1.45}
+    .prediction-reason{margin-top:4px;color:var(--text-3);font-size:8px;line-height:1.45}
+    .prediction-confidence{color:var(--text-3);font-size:8px;white-space:nowrap}
+    .concept-map{display:grid;gap:9px;margin-top:13px}
+    .concept-root{justify-self:center;padding:9px 14px;border:1px solid #cfd7fa;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:750;text-align:center}
+    .concept-branches{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}
+    .concept-node{position:relative;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+    .concept-node::before{content:"";position:absolute;left:50%;bottom:100%;height:10px;border-left:1px solid var(--line)}
+    .concept-node summary{cursor:pointer;list-style:none;font-size:9px;font-weight:700;line-height:1.45}
+    .concept-node summary::-webkit-details-marker{display:none}
+    .concept-node summary::after{content:"＋";float:right;color:var(--accent)}
+    .concept-node[open] summary::after{content:"−"}
+    .concept-node p{margin:8px 0 0;color:var(--text-2);font-size:8px;line-height:1.55}
+    .reminder-controls{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;align-items:end;gap:8px;margin-top:12px}
+    .reminder-current{margin-top:10px;padding:9px;border-radius:8px;background:var(--surface-muted);color:var(--text-2);font-size:9px;line-height:1.5}
+    .study-sheet-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .prediction-answer-toggle{margin-top:8px;padding:0;border:0;background:none;color:var(--accent);font-size:8px;font-weight:700}
+    .prediction-answer{margin-top:8px;padding:9px;border-left:2px solid var(--accent);border-radius:0 6px 6px 0;background:var(--surface-muted);color:var(--text-2);font-size:9px;line-height:1.6;white-space:pre-wrap}
+    .prediction-answer[hidden]{display:none}
+    .focus-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:13px}
+    .focus-pane{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+    .focus-pane-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;border-bottom:1px solid var(--line)}
+    .focus-pane-head strong{font-size:9px}
+    .focus-pane-body{height:290px;overflow:auto;padding:12px}
+    .focus-source-text{color:var(--text-2);font-size:9px;line-height:1.7;white-space:pre-wrap}
+    .focus-empty{display:grid;min-height:150px;place-items:center;color:var(--text-3);font-size:9px;text-align:center}
+    .focus-question-list,.focus-task-list{display:grid;gap:8px}
+    .focus-question{padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+    .focus-question strong{display:block;font-size:9px;line-height:1.5}
+    .focus-question .prediction-answer{font-size:8px}
+    .focus-task{display:flex;align-items:flex-start;gap:7px;color:var(--text-2);font-size:9px;line-height:1.5}
+    .focus-task input{width:12px;height:12px;margin:1px 0 0;accent-color:var(--accent)}
     .icon-btn{width:32px;height:32px;padding:0;display:grid;place-items:center;color:var(--text-2);background:var(--surface);border:1px solid var(--line);border-radius:8px;transition:transform .16s,background-color .2s,color .2s,border-color .2s}
     .icon-btn:hover{transform:translateY(-1px);background:var(--surface-muted);color:var(--accent);border-color:#cfd7fa}
     .theme-icon{width:15px;height:15px}.moon{display:none}
@@ -282,7 +340,7 @@
     html[data-theme="dark"] .theme-switch:not([aria-checked="true"]){background:#454957}
     @media(max-width:1020px){.sidebar{width:218px}.main{margin-left:218px}.page{padding-left:28px;padding-right:28px}.topbar{padding:0 28px}}
     @media(max-width:1050px){.dashboard-lower{grid-template-columns:repeat(2,minmax(0,1fr))}.focus-analytics-card{grid-column:1/-1}.dashboard-extras{grid-template-columns:repeat(2,minmax(0,1fr))}.ambient-card{grid-column:1/-1}}
-    @media(max-width:760px){.sidebar{width:62px;padding:18px 9px 14px}.brand{padding:0 6px 27px}.brand-word,.side-label,.nav-text,.privacy-card,.local-status span:not(.local-dot){display:none}.side-nav{gap:6px}.nav-link{width:43px;height:43px;padding:0;justify-content:center}.nav-glyph{font-size:17px}.local-status{justify-content:center;margin:0 0 2px}.main{margin-left:62px}.topbar{height:56px;padding:0 17px}.mobile-menu{display:block}.crumb{display:none}.page{padding:25px 17px}.predict-grid{grid-template-columns:1fr}.summary-grid{gap:8px}.summary-card{padding:13px;min-height:110px}.settings-grid{grid-template-columns:1fr}.dashboard-lower,.dashboard-extras{grid-template-columns:1fr}.focus-analytics-card,.ambient-card{grid-column:auto}.module-grid{grid-template-columns:1fr}.exam-countdown-widget{display:none}.kanban-board{grid-template-columns:1fr}.kanban-column{min-height:90px}}
+    @media(max-width:760px){.sidebar{width:62px;padding:18px 9px 14px}.brand{padding:0 6px 27px}.brand-word,.side-label,.nav-text,.privacy-card,.local-status span:not(.local-dot){display:none}.side-nav{gap:6px}.nav-link{width:43px;height:43px;padding:0;justify-content:center}.nav-glyph{font-size:17px}.local-status{justify-content:center;margin:0 0 2px}.main{margin-left:62px}.topbar{height:56px;padding:0 17px}.mobile-menu{display:block}.crumb{display:none}.page{padding:25px 17px}.predict-grid,.document-upload-grid,.intelligence-grid,.focus-workspace{grid-template-columns:1fr}.summary-grid{gap:8px}.summary-card{padding:13px;min-height:110px}.settings-grid{grid-template-columns:1fr}.dashboard-lower,.dashboard-extras{grid-template-columns:1fr}.focus-analytics-card,.ambient-card{grid-column:auto}.module-grid{grid-template-columns:1fr}.exam-countdown-widget{display:none}.kanban-board{grid-template-columns:1fr}.kanban-column{min-height:90px}.predictor-controls{align-items:stretch;flex-direction:column}.predictor-controls .field{max-width:none}.reminder-controls{grid-template-columns:1fr 100px}.reminder-controls button{grid-column:1/-1}}
     @media(max-width:470px){.page{padding:22px 12px}.topbar{padding:0 12px}.top-actions{gap:4px;min-width:0}.auth-controls{gap:3px}.auth-state{display:none}.auth-user{max-width:70px}.auth-button{padding:0 6px;font-size:8px}#auth-signup-open-button,#export-button{display:none}#notes-open{width:30px;min-width:30px;padding:0;font-size:0}#notes-open::before{content:"✎";font-size:13px}.summary-grid{grid-template-columns:1fr 1fr}.summary-card:last-child{grid-column:1/-1}.page-head{align-items:flex-start}.page-head .primary-btn{margin-top:14px;white-space:nowrap}.page-head h1{font-size:25px}.page-head .subtitle{max-width:210px}.task-panel{padding-left:13px;padding-right:13px}.section-divider{margin-left:-13px;margin-right:-13px}.task-row{gap:8px}.task-meta{gap:5px}.search-box{width:42%}.task-toolbar{gap:5px;flex-wrap:wrap}.filter-btn{padding:5px 6px}.task-footer{align-items:flex-start}.dialog{padding:18px}.footer{font-size:7px}.flashcard-grid{grid-template-columns:1fr}.schedule-row{grid-template-columns:55px minmax(0,1fr) auto;gap:7px;padding:10px}.timer-card,.dashboard-module-card,.schedule-card,.module-tracker-card,.flashcards-panel,.extra-card{padding:14px}.exam-countdown-card{align-items:flex-start;flex-direction:column}.exam-countdown-settings{width:100%}.exam-countdown-settings .field-input{flex:1;min-width:0}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
   </style>
@@ -297,6 +355,7 @@
       <nav class="side-nav" aria-label="Main navigation">
         <a class="nav-link active" href="#dashboard" data-view-link="dashboard" aria-label="Dashboard"><span class="nav-glyph" aria-hidden="true">◫</span><span class="nav-text">Dashboard</span></a>
         <a class="nav-link" href="#predictor" data-view-link="predictor" aria-label="Predictor"><span class="nav-glyph" aria-hidden="true">⌁</span><span class="nav-text">Predictor</span></a>
+        <a class="nav-link" href="#intelligence" data-view-link="intelligence" aria-label="AI exam predictor and documents"><span class="nav-glyph" aria-hidden="true">✳</span><span class="nav-text">AI Predictor</span></a>
         <a class="nav-link" href="#schedule" data-view-link="schedule" aria-label="Study schedule"><span class="nav-glyph" aria-hidden="true">▤</span><span class="nav-text">Study schedule</span></a>
         <a class="nav-link" href="#modules" data-view-link="modules" aria-label="Modules"><span class="nav-glyph" aria-hidden="true">▦</span><span class="nav-text">Modules</span></a>
         <a class="nav-link" href="#flashcards" data-view-link="flashcards" aria-label="Flashcards"><span class="nav-glyph" aria-hidden="true">▱</span><span class="nav-text">Flashcards</span></a>
@@ -455,6 +514,59 @@
             <div class="panel-head"><div><p class="eyebrow">YOUR SOURCE MATERIAL</p><h2 id="paper-table-title">Past-paper entries</h2></div><span class="count-pill" id="entry-count">0 entries</span></div>
             <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Question / Topic</th><th scope="col">Subject &amp; tags</th><th scope="col">Year</th><th scope="col">Recurrence</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="question-table-body"></tbody></table></div>
             <div class="empty-state" id="question-table-empty"><strong>Your paper library is empty.</strong><span>Add a past-paper question above to get started.</span></div>
+          </section>
+        </section>
+
+        <section class="page-view" id="intelligence-view" aria-labelledby="intelligence-title" hidden>
+          <div class="page-head">
+            <div><p class="eyebrow">YOUR MATERIALS, MADE ACTIONABLE</p><h1 id="intelligence-title">AI exam <span>predictor.</span></h1><p class="subtitle">Organize private study documents, inspect recurring patterns, and turn hotspots into a revision map.</p></div>
+            <span class="soft-badge">ON-DEVICE ANALYSIS</span>
+          </div>
+          <div class="document-upload-grid">
+            <section class="card document-upload-card" aria-labelledby="module-upload-title">
+              <p class="eyebrow">SOURCE MATERIAL</p><h2 id="module-upload-title">Module PDFs &amp; lecture notes</h2>
+              <div class="upload-dropzone" data-document-drop="module"><p>Drop lecture PDFs or text notes here, or choose a file. Text extraction happens in this browser; files are stored in your private Supabase account.</p><label class="field"><span class="field-label">Subject · optional</span><input class="field-input" id="module-document-subject" maxlength="60" placeholder="e.g. Biology"></label><div class="upload-actions"><label class="upload-file-label">Choose module file<input id="module-document-file" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"></label><span class="subtask-progress" id="module-upload-status">PDF, TXT, or MD · up to 20 MB</span></div></div>
+            </section>
+            <section class="card document-upload-card" aria-labelledby="pyq-upload-title">
+              <p class="eyebrow">PAST EXAM MATERIAL</p><h2 id="pyq-upload-title">Previous year question papers</h2>
+              <div class="upload-dropzone" data-document-drop="pyq"><p>Drop PYQ PDFs or text exports here, or choose a file. Detected question text contributes to topic recurrence analysis.</p><label class="field"><span class="field-label">Subject · optional</span><input class="field-input" id="pyq-document-subject" maxlength="60" placeholder="e.g. Biology"></label><div class="upload-actions"><label class="upload-file-label">Choose PYQ file<input id="pyq-document-file" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"></label><span class="subtask-progress" id="pyq-upload-status">PDF, TXT, or MD · up to 20 MB</span></div></div>
+            </section>
+          </div>
+          <section class="card document-upload-card" style="margin-top:13px" aria-labelledby="document-library-title">
+            <div class="panel-head"><div><p class="eyebrow">PRIVATE STORAGE LIBRARY</p><h2 id="document-library-title">Uploaded documents</h2></div><span class="count-pill" id="document-count">0 documents</span></div>
+            <div class="document-list" id="document-list"></div>
+            <div class="empty-state" id="documents-empty"><strong>Your document library is empty.</strong><span>Sign in, then upload a module file or past-paper document to start.</span></div>
+            <p class="upload-note">Documents are stored in a private Supabase Storage bucket under your user ID. Preview links are temporary. Analysis uses extracted text saved with your planner data.</p>
+          </section>
+          <div class="intelligence-grid" style="margin-top:13px">
+            <section class="card intelligence-card" aria-labelledby="topic-hotspots-title">
+              <div class="panel-head"><div><p class="eyebrow">PATTERNS FROM YOUR LIBRARY</p><h2 id="topic-hotspots-title">Predicted questions &amp; hotspots</h2></div><span class="soft-badge">ESTIMATES</span></div>
+              <div class="predictor-controls"><label class="field"><span class="field-label">Subject focus · optional</span><select class="field-input" id="predictor-subject"><option value="">All subjects</option></select></label><div class="study-sheet-actions"><button class="primary-btn" id="run-prediction" type="button">Analyze study materials</button><button class="quiet-btn" id="export-study-sheet" type="button">↓ Export study sheet</button></div></div>
+              <div class="prediction-list" id="prediction-list"></div>
+              <div class="empty-state" id="prediction-empty"><strong>Ready when you are.</strong><span>Analyze your uploaded notes and past-paper questions to build a ranked topic list.</span></div>
+              <p class="analysis-disclaimer">These are transparent, client-side frequency estimates—not generated or verified AI exam predictions. Past patterns cannot guarantee future exam content.</p>
+            </section>
+            <section class="card intelligence-card" aria-labelledby="concept-map-title">
+              <div class="panel-head"><div><p class="eyebrow">VISUAL RECALL MAP</p><h2 id="concept-map-title">Concept explorer</h2></div><span class="soft-badge">INTERACTIVE</span></div>
+              <p class="subtitle">Open a topic node to reveal its source notes and related revision prompts.</p>
+              <div class="concept-map" id="concept-map"><div class="empty-state"><strong>No concept map yet.</strong><span>Run the topic analyzer to build a visual revision tree.</span></div></div>
+            </section>
+          </div>
+          <section class="card intelligence-card" style="margin-top:13px" aria-labelledby="focus-workspace-title">
+            <div class="panel-head"><div><p class="eyebrow">STUDY WITHOUT SWITCHING CONTEXT</p><h2 id="focus-workspace-title">Split-screen focus</h2></div><button class="quiet-btn" id="focus-open-tasks" type="button">Open task planner →</button></div>
+            <p class="subtitle" style="margin-top:5px">Keep source material beside predicted questions or your upcoming study tasks.</p>
+            <label class="field" style="max-width:380px;margin-top:12px"><span class="field-label">Module or PYQ source</span><select class="field-input" id="focus-document-select"><option value="">Choose an uploaded document</option></select></label>
+            <div class="focus-workspace">
+              <section class="focus-pane" aria-label="Study source text"><div class="focus-pane-head"><strong id="focus-source-title">Source material</strong><button class="view-link" id="focus-preview-document" type="button" hidden>Preview file ↗</button></div><div class="focus-pane-body"><div class="focus-empty" id="focus-source-empty">Choose an uploaded document to view its extracted text here.</div><div class="focus-source-text" id="focus-source-text" hidden></div></div></section>
+              <section class="focus-pane" aria-label="Predicted questions or study tasks"><div class="focus-pane-head"><strong>Predicted Q&amp;A / study tasks</strong><button class="view-link" id="focus-pane-mode" type="button" aria-pressed="false">Show tasks</button></div><div class="focus-pane-body"><div class="focus-question-list" id="focus-question-list"></div><div class="focus-task-list" id="focus-task-list" hidden></div><div class="focus-empty" id="focus-pane-empty">Analyze your materials to populate this pane with revision questions.</div></div></section>
+            </div>
+          </section>
+          <section class="card intelligence-card" style="margin-top:13px" aria-labelledby="smart-reminder-title">
+            <div class="panel-head"><div><p class="eyebrow">A GENTLE NUDGE</p><h2 id="smart-reminder-title">Predicted-topic reminder</h2></div><span class="soft-badge" id="reminder-permission-status">NOT ENABLED</span></div>
+            <p class="subtitle">Set an in-app reminder for a topic. Browser notifications require permission and only fire while this page remains open.</p>
+            <div class="reminder-controls"><label class="field"><span class="field-label">Study topic</span><select class="field-input" id="reminder-topic"><option value="">Analyze topics first</option></select></label><label class="field"><span class="field-label">Remind me in</span><select class="field-input" id="reminder-delay"><option value="5">5 minutes</option><option value="25" selected>25 minutes</option><option value="60">1 hour</option><option value="1440">Tomorrow</option></select></label><button class="quiet-btn" id="schedule-topic-reminder" type="button">Set reminder</button></div>
+            <div class="reminder-current" id="reminder-current" role="status" aria-live="polite">No topic reminder scheduled.</div>
+            <button class="view-link" id="cancel-topic-reminder" type="button" hidden>Cancel reminder</button>
           </section>
         </section>
 
