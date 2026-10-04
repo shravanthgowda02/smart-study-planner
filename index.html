@@ -65,9 +65,12 @@
     .auth-forgot-link{justify-self:start;padding:0;font-size:9px}
     .auth-note{padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-muted);color:var(--text-2);font-size:9px;line-height:1.5}
     .exam-countdown-widget{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);white-space:nowrap}
+    button.exam-countdown-widget{color:inherit;font:inherit;cursor:pointer;transition:border-color .16s,background-color .16s}
+    button.exam-countdown-widget:hover{border-color:#cfd7fa;background:var(--accent-soft)}
     .exam-countdown-label{color:var(--text-3);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
     .exam-countdown-value{font:600 10px var(--mono);color:var(--accent)}
     .exam-countdown-card{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:-7px 0 15px;padding:13px 16px}
+    .exam-countdown-card[hidden]{display:none!important}
     .exam-countdown-copy strong{display:block;font:700 12px var(--display)}
     .exam-countdown-copy span{display:block;margin-top:3px;color:var(--text-3);font-size:9px}
     .exam-countdown-settings{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -341,6 +344,7 @@
     @media(max-width:1020px){.sidebar{width:218px}.main{margin-left:218px}.page{padding-left:28px;padding-right:28px}.topbar{padding:0 28px}}
     @media(max-width:1050px){.dashboard-lower{grid-template-columns:repeat(2,minmax(0,1fr))}.focus-analytics-card{grid-column:1/-1}.dashboard-extras{grid-template-columns:repeat(2,minmax(0,1fr))}.ambient-card{grid-column:1/-1}}
     @media(max-width:760px){.sidebar{width:62px;padding:18px 9px 14px}.brand{padding:0 6px 27px}.brand-word,.side-label,.nav-text,.privacy-card,.local-status span:not(.local-dot){display:none}.side-nav{gap:6px}.nav-link{width:43px;height:43px;padding:0;justify-content:center}.nav-glyph{font-size:17px}.local-status{justify-content:center;margin:0 0 2px}.main{margin-left:62px}.topbar{height:56px;padding:0 17px}.mobile-menu{display:block}.crumb{display:none}.page{padding:25px 17px}.predict-grid,.document-upload-grid,.intelligence-grid,.focus-workspace{grid-template-columns:1fr}.summary-grid{gap:8px}.summary-card{padding:13px;min-height:110px}.settings-grid{grid-template-columns:1fr}.dashboard-lower,.dashboard-extras{grid-template-columns:1fr}.focus-analytics-card,.ambient-card{grid-column:auto}.module-grid{grid-template-columns:1fr}.exam-countdown-widget{display:none}.kanban-board{grid-template-columns:1fr}.kanban-column{min-height:90px}.predictor-controls{align-items:stretch;flex-direction:column}.predictor-controls .field{max-width:none}.reminder-controls{grid-template-columns:1fr 100px}.reminder-controls button{grid-column:1/-1}}
+    @media(max-width:760px){.exam-countdown-widget{display:flex;gap:4px;padding:4px 5px}.exam-countdown-label{display:none}}
     @media(max-width:470px){.page{padding:22px 12px}.topbar{padding:0 12px}.top-actions{gap:4px;min-width:0}.auth-controls{gap:3px}.auth-state{display:none}.auth-user{max-width:70px}.auth-button{padding:0 6px;font-size:8px}#auth-signup-open-button,#export-button{display:none}#notes-open{width:30px;min-width:30px;padding:0;font-size:0}#notes-open::before{content:"✎";font-size:13px}.summary-grid{grid-template-columns:1fr 1fr}.summary-card:last-child{grid-column:1/-1}.page-head{align-items:flex-start}.page-head .primary-btn{margin-top:14px;white-space:nowrap}.page-head h1{font-size:25px}.page-head .subtitle{max-width:210px}.task-panel{padding-left:13px;padding-right:13px}.section-divider{margin-left:-13px;margin-right:-13px}.task-row{gap:8px}.task-meta{gap:5px}.search-box{width:42%}.task-toolbar{gap:5px;flex-wrap:wrap}.filter-btn{padding:5px 6px}.task-footer{align-items:flex-start}.dialog{padding:18px}.footer{font-size:7px}.flashcard-grid{grid-template-columns:1fr}.schedule-row{grid-template-columns:55px minmax(0,1fr) auto;gap:7px;padding:10px}.timer-card,.dashboard-module-card,.schedule-card,.module-tracker-card,.flashcards-panel,.extra-card{padding:14px}.exam-countdown-card{align-items:flex-start;flex-direction:column}.exam-countdown-settings{width:100%}.exam-countdown-settings .field-input{flex:1;min-width:0}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
   </style>
@@ -372,7 +376,7 @@
         <div class="crumb"><span id="crumb-section">Workspace</span><b>/</b><strong id="page-date">Today</strong></div>
         <button class="icon-btn mobile-menu" type="button" id="mobile-menu" aria-label="Return to dashboard">⌂</button>
         <div class="top-actions">
-          <div class="exam-countdown-widget" aria-live="polite"><span class="exam-countdown-label">NEXT EXAM</span><span class="exam-countdown-value" id="exam-countdown-top">Set a date</span></div>
+          <button class="exam-countdown-widget" id="exam-countdown-trigger" type="button" aria-label="Edit exam countdown"><span class="exam-countdown-label">NEXT EXAM</span><span class="exam-countdown-value" id="exam-countdown-top">Set a date</span></button>
           <button class="quiet-btn" id="notes-open" type="button" aria-label="Open quick notes">✎ Notes</button>
           <div class="auth-controls">
             <span id="auth-user-email" class="auth-user" hidden></span>
@@ -381,7 +385,7 @@
             <button class="auth-button" id="auth-signup-open-button" type="button">Sign up</button>
             <button class="auth-button" id="auth-logout-button" type="button" hidden>Log out</button>
           </div>
-          <article class="card exam-countdown-card" aria-label="Exam countdown settings">
+          <article class="card exam-countdown-card" id="exam-date-card" aria-label="Exam countdown settings">
             <div class="exam-countdown-copy"><strong id="exam-countdown-title">Your next exam</strong><span id="exam-countdown-description">Set a target date to keep the finish line in view.</span></div>
             <div class="exam-countdown-settings"><input class="field-input" id="exam-title-input" maxlength="60" aria-label="Exam name" placeholder="Exam name"><input class="field-input" id="exam-date-input" type="date" aria-label="Exam date"><button class="quiet-btn" id="save-exam-target" type="button">Save date</button></div>
           </article>

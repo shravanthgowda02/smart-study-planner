@@ -108,6 +108,7 @@
       let predictionHasRun = false;
       let topicReminderTimeout = null;
       let focusPaneMode = "questions";
+      let examDateSettingsOpen = !data.targetExam;
 
       function setCloudStatus(message, tone = "") {
         const status = $("#cloud-status");
@@ -623,6 +624,7 @@
         const target = data.targetExam;
         const title = target?.label || "Your next exam";
         $("#exam-countdown-title").textContent = title;
+        $("#exam-date-card").hidden = !examDateSettingsOpen;
         const signature = JSON.stringify(target);
         if (signature !== renderedExamTarget) {
           if (document.activeElement !== $("#exam-title-input")) $("#exam-title-input").value = target?.label || "";
@@ -653,6 +655,30 @@
         $("#exam-countdown-description").textContent = minutesLeft === 0
           ? `Today · ${new Date(`${target.date}T09:00:00`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} target`
           : `${days} days, ${hours} hours and ${minutes} minutes remaining.`;
+      }
+
+      function saveExamDate() {
+        const date = $("#exam-date-input").value;
+        const label = $("#exam-title-input").value.trim().slice(0, 60);
+        if (date && !dateFromISO(date)) {
+          showToast("Choose a valid exam date.");
+          $("#exam-date-input").focus();
+          return;
+        }
+        if (!date && label) {
+          showToast("Choose an exam date, or clear the exam name too to remove the countdown.");
+          $("#exam-date-input").focus();
+          return;
+        }
+        const previous = data.targetExam;
+        data.targetExam = date ? { date, label } : null;
+        if (!saveData()) {
+          data.targetExam = previous;
+          return;
+        }
+        examDateSettingsOpen = false;
+        renderHeader();
+        showToast(date ? "Exam countdown saved." : "Exam countdown cleared.");
       }
 
       function getUniqueSessions() {
@@ -1657,14 +1683,11 @@
         data.viewMode = button.dataset.taskView;
         if (saveData()) renderTasks();
       }));
-      $("#save-exam-target").addEventListener("click", () => {
-        const date = $("#exam-date-input").value;
-        if (date && !dateFromISO(date)) return showToast("Choose a valid exam date.");
-        const previous = data.targetExam;
-        data.targetExam = date ? { date, label: $("#exam-title-input").value.trim().slice(0, 60) } : null;
-        if (!saveData()) { data.targetExam = previous; return; }
-        renderHeader();
-        showToast(date ? "Exam countdown updated." : "Exam countdown cleared.");
+      $("#save-exam-target").addEventListener("click", saveExamDate);
+      $("#exam-countdown-trigger").addEventListener("click", () => {
+        examDateSettingsOpen = true;
+        renderExamCountdown();
+        $("#exam-title-input").focus();
       });
       $$("[data-energy]").forEach((button) => button.addEventListener("click", () => {
         const previous = data.energyLogs;
