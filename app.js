@@ -57,6 +57,7 @@
             && typeof document.name === "string" && ["module", "pyq"].includes(document.docType))
             .slice(0, 100).map((document) => ({
               id: document.id, path: document.path.slice(0, 512), name: document.name.slice(0, 180),
+              studyMaterialId: typeof document.studyMaterialId === "string" ? document.studyMaterialId : "",
               subject: typeof document.subject === "string" ? document.subject.slice(0, 60) : "",
               docType: document.docType, mimeType: typeof document.mimeType === "string" ? document.mimeType.slice(0, 120) : "",
               size: Number.isFinite(Number(document.size)) ? Math.max(0, Number(document.size)) : 0,
@@ -1023,8 +1024,8 @@
       const MAX_EXTRACTED_CHARS = 18000;
       const STORAGE_BUCKET = "study-materials";
 
-      function setDocumentUploadStatus(docType, message, isError = false) {
-        const status = $(`#${docType}-upload-status`);
+      function setDocumentUploadStatus(docType, message, isError = false, statusId = `${docType}-upload-status`) {
+        const status = $(`#${statusId}`);
         status.textContent = message;
         status.style.color = isError ? "var(--red)" : "";
       }
@@ -1038,27 +1039,41 @@
         return String(name || "").split(".").pop().toLocaleLowerCase();
       }
 
-      async function extractStudyText(file) {
+      async function extractFullDocumentText(file) {
         const extension = getDocumentExtension(file.name);
         if (extension === "txt" || extension === "md") {
-          return (await file.text()).slice(0, MAX_EXTRACTED_CHARS);
+          const fullText = await file.text();
+          return {
+            fullText,
+            text: fullText.slice(0, MAX_EXTRACTED_CHARS),
+            pagesRead: null,
+            totalPages: null,
+            truncated: fullText.length > MAX_EXTRACTED_CHARS
+          };
         }
         if (extension !== "pdf") throw new Error("Only PDF, TXT, and Markdown files are supported.");
         if (!window.pdfjsLib?.getDocument) throw new Error("PDF text extraction is unavailable; the file can still be stored and previewed.");
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
         const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-        const pageLimit = Math.min(pdf.numPages, 30);
-        const pages = [];
-        for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+        let fullText = "";
+        let truncated = false;
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
           const page = await pdf.getPage(pageNumber);
           const content = await page.getTextContent();
-          pages.push(content.items.map((item) => "str" in item ? item.str : "").filter(Boolean).join(" "));
-          if (pages.join("\n").length >= MAX_EXTRACTED_CHARS) break;
+          const pageText = content.items.map((item) => "str" in item ? item.str : "").filter(Boolean).join(" ");
+          fullText += `${fullText ? "\n" : ""}${pageText}`;
+          if (fullText.length > MAX_EXTRACTED_CHARS) truncated = true;
         }
-        return pages.join("\n").slice(0, MAX_EXTRACTED_CHARS);
+        return {
+          fullText,
+          text: fullText.slice(0, MAX_EXTRACTED_CHARS),
+          pagesRead: pdf.numPages,
+          totalPages: pdf.numPages,
+          truncated
+        };
       }
 
-      async function uploadStudyDocument(file, docType) {
+      async function uploadStudyDocument(file, docType, subjectInputSelector = "") {
         if (!["module", "pyq"].includes(docType)) throw new Error("Choose a supported document category.");
         if (!file || !file.name) throw new Error("Choose a document to upload.");
         if (!authUser || !supabaseClient) throw new Error("Sign in to upload documents to your private library.");
@@ -1072,15 +1087,20 @@
         if (sessionError) throw sessionError;
         if (!sessionData.session || sessionData.session.user.id !== userId) throw new Error("Your session changed. Sign in again before uploading.");
 
-        const inputId = docType === "module" ? "#module-document-subject" : "#pyq-document-subject";
-        const subject = $(inputId).value.trim().slice(0, 60);
+        const inputId = subjectInputSelector || (docType === "module" ? "#module-document-subject" : "#pyq-document-subject");
+        const subjectInput = $(inputId);
+        const subject = subjectInput?.value.trim().slice(0, 60) || "";
         let extractedText = "";
+        let extractedFullText = "";
         let extractionWarning = "";
         try {
-          extractedText = await extractStudyText(file);
+          const extraction = await extractFullDocumentText(file);
+          extractedText = extraction.text;
+          extractedFullText = extraction.fullText;
           if (!extractedText.trim()) extractionWarning = "No selectable text found; scanned PDFs need OCR.";
+          else if (extraction.truncated) extractionWarning = `All ${extraction.pagesRead ?? "file"} ${extraction.pagesRead ? "PDF pages were read" : "text was read"}; the saved searchable excerpt is limited to ${MAX_EXTRACTED_CHARS.toLocaleString()} characters to protect browser storage.`;
         } catch (error) {
-          extractionWarning = error.message || "Text extraction failed.";
+          throw new Error(`Could not extract the full document text, so it was not uploaded: ${error.message || "Text extraction failed."}`);
         }
 
         const id = makeId();
@@ -1091,14 +1111,39 @@
         });
         if (uploadError) throw uploadError;
 
+        let databaseRecord;
+        try {
+          const { data: savedRecord, error: insertError } = await supabaseClient.from("study_materials").insert({
+            user_id: userId,
+            title: file.name.slice(0, 240),
+            extracted_text: extractedFullText,
+            file_type: docType,
+            category: docType === "pyq" ? "question_paper" : "lecture_notes",
+            storage_path: objectPath,
+            subject,
+            mime_type: contentType,
+            file_size: file.size
+          }).select("id").single();
+          if (insertError) throw insertError;
+          if (!savedRecord?.id) throw new Error("Supabase did not return the saved study-material record.");
+          databaseRecord = savedRecord;
+        } catch (error) {
+          const { error: rollbackError } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([objectPath]);
+          if (rollbackError) console.error("Could not roll back the uploaded file after its database insert failed:", rollbackError);
+          throw new Error(`The file could not be recorded in public.study_materials: ${error.message || "Check the table and its RLS policies."}`);
+        }
+
         const documentRecord = {
-          id, path: objectPath, name: safeDocumentName(file.name), docType, subject,
+          id, studyMaterialId: String(databaseRecord.id), path: objectPath, name: safeDocumentName(file.name), docType, subject,
           mimeType: contentType, size: file.size, createdAt: new Date().toISOString(), ownerId: userId,
           extractedText, extractionWarning
         };
         data.documents = [...data.documents, documentRecord];
         if (!saveData()) {
           data.documents = data.documents.filter((document) => document.id !== id);
+          const { error: databaseRollbackError } = await supabaseClient.from("study_materials").delete()
+            .eq("id", databaseRecord.id).eq("user_id", userId);
+          if (databaseRollbackError) console.error("Could not roll back the study-material row after local storage failed:", databaseRollbackError);
           const { error: rollbackError } = await supabaseClient.storage.from(STORAGE_BUCKET).remove([objectPath]);
           if (rollbackError) console.error("Could not roll back an uploaded document after local storage failed:", rollbackError);
           throw new Error("The document could not be saved to local planner data.");
@@ -1155,7 +1200,14 @@
           return;
         }
         render();
-        showToast("Document deleted.");
+        const { error: rowDeleteError } = await supabaseClient.from("study_materials").delete()
+          .eq("storage_path", document.path).eq("user_id", authUser.id);
+        if (rowDeleteError) {
+          console.error("The document file was deleted, but its study-material database row could not be removed:", rowDeleteError);
+          showToast(`File deleted, but its database record could not be removed: ${rowDeleteError.message || "Check the study_materials delete policy."}`);
+          return;
+        }
+        showToast("Document and study-material record deleted.");
       }
 
       function renderDocuments() {
@@ -1200,7 +1252,39 @@
           .replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
       }
 
-      function analyzeExamTopics(subjectFilter = "") {
+      function buildExamAnalysisPayload(subjectFilter = "") {
+        const matchesSubject = (subject) => !subjectFilter
+          || String(subject || "").toLocaleLowerCase() === subjectFilter.toLocaleLowerCase();
+        const documents = visibleStudyDocuments().filter((document) => document.extractedText && matchesSubject(document.subject))
+          .map((document) => ({
+            id: document.id,
+            name: document.name,
+            docType: document.docType,
+            subject: document.subject,
+            extractedText: document.extractedText
+          }));
+        return {
+          subjectFilter,
+          questions: data.questions.filter((question) => matchesSubject(question.subject)),
+          modules: data.modules.filter((module) => matchesSubject(module.subject)),
+          moduleDocuments: documents.filter((document) => document.docType === "module"),
+          pyqDocuments: documents.filter((document) => document.docType === "pyq")
+        };
+      }
+
+      const TOPIC_EVIDENCE_STOP_WORDS = new Set([
+        "about", "after", "also", "been", "being", "between", "could", "does", "from", "have", "into",
+        "more", "most", "other", "over", "such", "than", "that", "their", "them", "there", "these",
+        "they", "this", "those", "through", "under", "using", "what", "when", "where", "which", "while",
+        "with", "would", "your", "explain", "describe", "discuss", "question", "paper", "year", "briefly"
+      ]);
+
+      function topicEvidenceTerms(text) {
+        return [...new Set(topicKey(text).split(" ")
+          .filter((term) => term.length > 2 && !TOPIC_EVIDENCE_STOP_WORDS.has(term)))];
+      }
+
+      function analyzeExamTopics(subjectFilter = "", analysisPayload = buildExamAnalysisPayload(subjectFilter)) {
         const candidates = new Map();
         const addCandidate = (label, subject = "", year = null, sourceType = "question", docId = "", moduleWeight = 0) => {
           const cleanLabel = String(label || "").replace(/\s+/g, " ").trim().slice(0, 180);
@@ -1221,17 +1305,28 @@
           if (moduleWeight > 0) candidate.moduleWeights.push(moduleWeight);
         };
 
-        data.questions.forEach((question) => addCandidate(question.topic, question.subject, question.year));
-        data.modules.forEach((module) => addCandidate(module.name, module.subject, null, "module", "", Number(module.weight) || 0));
-        visibleStudyDocuments().forEach((document) => {
-          if (!document.extractedText) return;
+        analysisPayload.questions.forEach((question) => addCandidate(question.topic, question.subject, question.year));
+        analysisPayload.modules.forEach((module) => addCandidate(module.name, module.subject, null, "module", "", Number(module.weight) || 0));
+        [...analysisPayload.moduleDocuments, ...analysisPayload.pyqDocuments].forEach((document) => {
           const sourceType = document.docType === "pyq" ? "pyq-document" : "module-document";
           documentTopicPhrases(document.extractedText).forEach((phrase) => addCandidate(phrase, document.subject, null, sourceType, document.id));
         });
 
-        const totalYears = new Set(data.questions
-          .filter((question) => !subjectFilter || String(question.subject || "").toLocaleLowerCase() === subjectFilter.toLocaleLowerCase())
-          .map((question) => String(question.year))).size;
+        [...candidates.values()].forEach((candidate) => {
+          const terms = topicEvidenceTerms(candidate.topic);
+          if (terms.length < 2) return;
+          const minimumMatches = Math.max(2, Math.ceil(terms.length / 2));
+          const matchesTopic = (document) => {
+            const documentTerms = new Set(topicEvidenceTerms(document.extractedText));
+            return terms.filter((term) => documentTerms.has(term)).length >= minimumMatches;
+          };
+          analysisPayload.moduleDocuments.filter(matchesTopic)
+            .forEach((document) => candidate.moduleDocuments.add(document.id));
+          analysisPayload.pyqDocuments.filter(matchesTopic)
+            .forEach((document) => candidate.pyqDocuments.add(document.id));
+        });
+
+        const totalYears = new Set(analysisPayload.questions.map((question) => String(question.year))).size;
         return [...candidates.values()].map((candidate) => {
           const years = candidate.years.size;
           const pyqSources = candidate.pyqDocuments.size;
@@ -1473,7 +1568,9 @@
 
       async function runExamPrediction() {
         predictionHasRun = true;
-        predictionResults = analyzeExamTopics($("#predictor-subject").value);
+        const subjectFilter = $("#predictor-subject").value;
+        const analysisPayload = buildExamAnalysisPayload(subjectFilter);
+        predictionResults = analyzeExamTopics(subjectFilter, analysisPayload);
         renderPredictionResults();
         if (!predictionResults.length) return showToast("No readable topics found. Add past-paper entries or upload text-readable PDFs/notes.");
         showToast(`Analyzed study data and ranked ${predictionResults.length} topic hotspots.`);
@@ -2061,21 +2158,21 @@
         showToast("Past-paper entry deleted.");
       });
 
-      async function processStudyDocumentFile(file, input, docType) {
+      async function processStudyDocumentFile(file, input, docType, { statusId = `${docType}-upload-status`, subjectInputSelector = "" } = {}) {
         if (!file || input.disabled) return;
         const acceptedExtension = /\.(?:pdf|txt|md)$/i.test(file.name);
         if (!acceptedExtension) {
-          setDocumentUploadStatus(docType, "Choose a PDF, TXT, or MD file.", true);
+          setDocumentUploadStatus(docType, "Choose a PDF, TXT, or MD file.", true, statusId);
           return showToast("Only PDF, TXT, and MD study documents are supported.");
         }
-        setDocumentUploadStatus(docType, "Extracting text and uploading…");
+        setDocumentUploadStatus(docType, "Reading document and uploading…", false, statusId);
         input.disabled = true;
         try {
-          await uploadStudyDocument(file, docType);
-          setDocumentUploadStatus(docType, "Uploaded · choose or drop another file.");
+          await uploadStudyDocument(file, docType, subjectInputSelector);
+          setDocumentUploadStatus(docType, "Uploaded · choose or drop another file.", false, statusId);
         } catch (error) {
           console.error(`Unable to upload ${docType} study document:`, error);
-          setDocumentUploadStatus(docType, error.message || "Upload failed.", true);
+          setDocumentUploadStatus(docType, error.message || "Upload failed.", true, statusId);
           showToast(error.message || "The document could not be uploaded.");
         } finally {
           input.value = "";
@@ -2084,16 +2181,17 @@
       }
 
       [
-        { selector: "#module-document-file", docType: "module" },
-        { selector: "#pyq-document-file", docType: "pyq" }
-      ].forEach(({ selector, docType }) => {
+        { selector: "#module-document-file", docType: "module", dropzone: "module", statusId: "module-upload-status" },
+        { selector: "#pyq-document-file", docType: "pyq", dropzone: "pyq", statusId: "pyq-upload-status" },
+        { selector: "#paper-pyq-file", docType: "pyq", dropzone: "paper-pyq", statusId: "paper-pyq-upload-status", subjectInputSelector: "#paper-pyq-subject" }
+      ].forEach(({ selector, docType, dropzone: dropzoneId, statusId, subjectInputSelector = "" }) => {
         const input = $(selector);
         input.addEventListener("change", async (event) => {
           const [file] = event.currentTarget.files || [];
           if (!file) return;
-          await processStudyDocumentFile(file, input, docType);
+          await processStudyDocumentFile(file, input, docType, { statusId, subjectInputSelector });
         });
-        const dropzone = $(`[data-document-drop="${docType}"]`);
+        const dropzone = $(`[data-document-drop="${dropzoneId}"]`);
         ["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
           event.preventDefault();
           if (event.dataTransfer?.types.includes("Files")) dropzone.classList.add("drag-over");
@@ -2106,7 +2204,7 @@
           event.preventDefault();
           dropzone.classList.remove("drag-over");
           const [file] = event.dataTransfer?.files || [];
-          if (file) await processStudyDocumentFile(file, input, docType);
+          if (file) await processStudyDocumentFile(file, input, docType, { statusId, subjectInputSelector });
         });
       });
       $("#document-list").addEventListener("click", (event) => {

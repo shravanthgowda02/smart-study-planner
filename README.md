@@ -120,7 +120,44 @@ create policy "Users can delete their own study materials"
   );
 ```
 
-The browser extracts selectable PDF text with PDF.js (up to 30 pages) and stores a bounded text excerpt with planner metadata for local topic analysis. Scanned/image-only PDFs need OCR before analysis. JSON backups preserve document metadata and extracted excerpts, but not uploaded binary files; those remain in the account's private Storage bucket. Document previews use short-lived signed links. The predictor is a transparent, client-side frequency heuristic based on uploaded text, module weights, and logged paper history—not a hosted generative AI service or a guarantee of exam content. Clicking a predicted question surfaces the best-matching sentences from the user's uploaded module text as a **source-based answer**; the app does not fabricate an answer when no passage matches. Export a ranked Markdown study sheet with probability estimates, evidence, and source-based answers. The split-screen focus workspace shows extracted source text alongside predictions or actionable open tasks. In-app reminders and browser notifications require the app tab to remain open; browser notification permission is requested only when setting a reminder.
+Create the metadata and full-text table as well:
+
+```sql
+create table if not exists public.study_materials (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  title text not null,
+  extracted_text text not null default '',
+  file_type text not null check (file_type in ('module', 'pyq')),
+  category text not null check (category in ('lecture_notes', 'question_paper')),
+  storage_path text not null unique,
+  subject text not null default '',
+  mime_type text not null,
+  file_size bigint not null check (file_size > 0),
+  created_at timestamptz not null default now()
+);
+
+alter table public.study_materials enable row level security;
+
+drop policy if exists "Users can read their own study material rows" on public.study_materials;
+create policy "Users can read their own study material rows"
+  on public.study_materials for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can insert their own study material rows" on public.study_materials;
+create policy "Users can insert their own study material rows"
+  on public.study_materials for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can delete their own study material rows" on public.study_materials;
+create policy "Users can delete their own study material rows"
+  on public.study_materials for delete to authenticated
+  using ((select auth.uid()) = user_id);
+
+grant select, insert, delete on public.study_materials to authenticated;
+```
+
+The app extracts text from every page of selectable PDFs with PDF.js. It inserts the **full extracted text** and file metadata into `public.study_materials`, while retaining an 18,000-character excerpt in planner state for on-device analysis and JSON backup. The actual uploaded binary is stored under the user's folder in the private bucket. If either Storage upload or database insert fails, the app reports the error and rolls back the other upload step when possible; the document appears in the library after both remote saves and local state persistence succeed. Scanned/image-only PDFs need OCR before analysis. JSON backups preserve document metadata and extracted excerpts, but not uploaded binary files or the full database text; those remain in the account's private Storage bucket and `public.study_materials`. Document previews use short-lived signed links. The predictor is a transparent, client-side frequency heuristic based on uploaded text, module weights, and logged paper history—not a hosted generative AI service or a guarantee of exam content. Clicking a predicted question surfaces the best-matching sentences from the user's uploaded module text as a **source-based answer**; the app does not fabricate an answer when no passage matches. Export a ranked Markdown study sheet with probability estimates, evidence, and source-based answers. The split-screen focus workspace shows extracted source text alongside predictions or actionable open tasks. In-app reminders and browser notifications require the app tab to remain open; browser notification permission is requested only when setting a reminder.
 
 ## Features
 
@@ -132,7 +169,7 @@ The browser extracts selectable PDF text with PDF.js (up to 30 pages) and stores
 - Save a daily energy check-in and use the auto-saving quick-notes drawer to capture thoughts without losing your place.
 - Generate local rain, coffee-shop, or soft lo-fi ambience with the browser's Web Audio API; no audio files are downloaded or streamed.
 - Past-paper question and tag logging, a recurrence table, and a frequency-ranked exam focus list.
-- Private module/PYQ document uploads with per-user Supabase Storage policies, temporary previews, and document removal.
+- Private module/PYQ document uploads from the predictor and past-paper sections, with per-user Supabase Storage policies, full-page PDF text extraction, temporary previews, and document removal.
 - Client-side, subject-filterable exam-topic hotspot estimates with an interactive concept map grounded in uploaded text and past-paper history.
 - Click-to-reveal, source-based answer excerpts; Markdown study-sheet export; and a split-screen workspace for source text with predicted questions or completable tasks.
 - Custom topic reminders with in-app alerts and optional browser notifications while the app tab is open.

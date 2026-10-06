@@ -119,6 +119,9 @@
     .document-upload-grid,.intelligence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
     .document-upload-card,.intelligence-card{padding:18px}
     .upload-dropzone{display:grid;gap:8px;justify-items:start;margin-top:12px;padding:16px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2)}
+    .paper-upload-panel{margin:14px 0;padding:13px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+    .paper-upload-panel h3{margin:0 0 5px;font:700 12px var(--display)}
+    .paper-upload-panel .subtitle{margin-bottom:8px}
     .upload-dropzone.drag-over{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent)}
     .upload-dropzone p{margin:0;color:var(--text-2);font-size:10px;line-height:1.5}
     .upload-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -516,6 +519,11 @@
           </div>
           <section class="card predict-card" style="margin-top:13px" aria-labelledby="paper-table-title">
             <div class="panel-head"><div><p class="eyebrow">YOUR SOURCE MATERIAL</p><h2 id="paper-table-title">Past-paper entries</h2></div><span class="count-pill" id="entry-count">0 entries</span></div>
+            <section class="paper-upload-panel" aria-labelledby="paper-upload-title">
+              <p class="eyebrow">QUESTION PAPER FILES</p><h3 id="paper-upload-title">Upload previous-year papers</h3>
+              <p class="subtitle">Add PYQ PDFs, TXT, or Markdown files to your private library. Every PDF page is processed for topic analysis.</p>
+              <div class="upload-dropzone" data-document-drop="paper-pyq"><p>Drop a question paper here, or choose a file. Files are stored in your private Supabase account.</p><label class="field"><span class="field-label">Subject · optional</span><input class="field-input" id="paper-pyq-subject" maxlength="60" placeholder="e.g. Biology"></label><div class="upload-actions"><label class="upload-file-label">Choose question paper<input id="paper-pyq-file" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"></label><span class="subtask-progress" id="paper-pyq-upload-status">PDF, TXT, or MD · up to 20 MB</span></div></div>
+            </section>
             <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Question / Topic</th><th scope="col">Subject &amp; tags</th><th scope="col">Year</th><th scope="col">Recurrence</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="question-table-body"></tbody></table></div>
             <div class="empty-state" id="question-table-empty"><strong>Your paper library is empty.</strong><span>Add a past-paper question above to get started.</span></div>
           </section>
