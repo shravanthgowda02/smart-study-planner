@@ -110,6 +110,7 @@
       let topicReminderTimeout = null;
       let focusPaneMode = "questions";
       let examDateSettingsOpen = !data.targetExam;
+      let studyMaterialRows = [];
 
       function setCloudStatus(message, tone = "") {
         const status = $("#cloud-status");
@@ -261,6 +262,20 @@
         }
       }
 
+      async function loadStudyMaterialsFromCloud(userId) {
+        if (!supabaseClient || !authUser || authUser.id !== userId) {
+          throw new Error("Sign in to load your private study materials.");
+        }
+        const { data: rows, error } = await supabaseClient.from("study_materials")
+          .select("id,user_id,title,extracted_text,file_type,category,storage_path,subject,mime_type,file_size,created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        if (authUser?.id !== userId) throw new Error("Your account changed while study materials were loading.");
+        studyMaterialRows = Array.isArray(rows) ? rows : [];
+        return studyMaterialRows;
+      }
+
       async function applyAuthSession(session) {
         const user = session?.user || null;
         if (authSessionInitialized && user?.id === activeAuthUserId) return;
@@ -269,6 +284,7 @@
         const generation = ++authLoadGeneration;
         authUser = user;
         cloudSyncAllowed = false;
+        studyMaterialRows = [];
         clearTimeout(cloudSyncTimer);
         updateAuthUI();
         predictionResults = [];
@@ -1138,9 +1154,23 @@
           mimeType: contentType, size: file.size, createdAt: new Date().toISOString(), ownerId: userId,
           extractedText, extractionWarning
         };
+        studyMaterialRows = [...studyMaterialRows, {
+          id: databaseRecord.id,
+          user_id: userId,
+          title: file.name.slice(0, 240),
+          extracted_text: extractedFullText,
+          file_type: docType,
+          category: docType === "pyq" ? "question_paper" : "lecture_notes",
+          storage_path: objectPath,
+          subject,
+          mime_type: contentType,
+          file_size: file.size,
+          created_at: documentRecord.createdAt
+        }];
         data.documents = [...data.documents, documentRecord];
         if (!saveData()) {
           data.documents = data.documents.filter((document) => document.id !== id);
+          studyMaterialRows = studyMaterialRows.filter((row) => row.id !== databaseRecord.id);
           const { error: databaseRollbackError } = await supabaseClient.from("study_materials").delete()
             .eq("id", databaseRecord.id).eq("user_id", userId);
           if (databaseRollbackError) console.error("Could not roll back the study-material row after local storage failed:", databaseRollbackError);
@@ -1207,6 +1237,7 @@
           showToast(`File deleted, but its database record could not be removed: ${rowDeleteError.message || "Check the study_materials delete policy."}`);
           return;
         }
+        studyMaterialRows = studyMaterialRows.filter((row) => row.storage_path !== document.path);
         showToast("Document and study-material record deleted.");
       }
 
@@ -1255,14 +1286,29 @@
       function buildExamAnalysisPayload(subjectFilter = "") {
         const matchesSubject = (subject) => !subjectFilter
           || String(subject || "").toLocaleLowerCase() === subjectFilter.toLocaleLowerCase();
-        const documents = visibleStudyDocuments().filter((document) => document.extractedText && matchesSubject(document.subject))
-          .map((document) => ({
+        const documentsByPath = new Map(visibleStudyDocuments().filter((document) => document.extractedText)
+          .map((document) => [document.path, {
             id: document.id,
+            storagePath: document.path,
             name: document.name,
             docType: document.docType,
             subject: document.subject,
             extractedText: document.extractedText
-          }));
+          }]));
+        studyMaterialRows.forEach((row) => {
+          if (row.user_id !== authUser?.id || !row.storage_path || !["module", "pyq"].includes(row.file_type)
+            || !matchesSubject(row.subject) || typeof row.extracted_text !== "string") return;
+          const localDocument = documentsByPath.get(row.storage_path);
+          documentsByPath.set(row.storage_path, {
+            id: localDocument?.id || String(row.id),
+            storagePath: row.storage_path,
+            name: row.title || localDocument?.name || "Study document",
+            docType: row.file_type,
+            subject: row.subject || localDocument?.subject || "",
+            extractedText: row.extracted_text
+          });
+        });
+        const documents = [...documentsByPath.values()].filter((document) => matchesSubject(document.subject));
         return {
           subjectFilter,
           questions: data.questions.filter((question) => matchesSubject(question.subject)),
@@ -1568,12 +1614,27 @@
 
       async function runExamPrediction() {
         predictionHasRun = true;
-        const subjectFilter = $("#predictor-subject").value;
-        const analysisPayload = buildExamAnalysisPayload(subjectFilter);
-        predictionResults = analyzeExamTopics(subjectFilter, analysisPayload);
-        renderPredictionResults();
-        if (!predictionResults.length) return showToast("No readable topics found. Add past-paper entries or upload text-readable PDFs/notes.");
-        showToast(`Analyzed study data and ranked ${predictionResults.length} topic hotspots.`);
+        const button = $("#run-prediction");
+        button.disabled = true;
+        button.textContent = authUser ? "Loading saved materials…" : "Analyzing materials…";
+        try {
+          if (authUser) await loadStudyMaterialsFromCloud(authUser.id);
+          const subjectFilter = $("#predictor-subject").value;
+          const analysisPayload = buildExamAnalysisPayload(subjectFilter);
+          predictionResults = analyzeExamTopics(subjectFilter, analysisPayload);
+          renderPredictionResults();
+          if (!predictionResults.length) {
+            showToast("No readable topics found. Add past-paper entries or upload text-readable PDFs/notes.");
+            return;
+          }
+          showToast(`Analyzed ${analysisPayload.moduleDocuments.length} module and ${analysisPayload.pyqDocuments.length} PYQ documents with your logged paper history.`);
+        } catch (error) {
+          console.error("Unable to load source material for exam analysis:", error);
+          showToast(`Could not analyze your saved study materials: ${error.message || "Check your connection and study_materials table permissions."}`);
+        } finally {
+          button.disabled = false;
+          button.textContent = "Analyze study materials";
+        }
       }
 
       async function deliverTopicReminder() {
